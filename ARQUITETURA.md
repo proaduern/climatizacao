@@ -182,8 +182,8 @@ UNIVERSIDADE DO ESTADO DO RIO GRANDE DO NORTE - UERN
 PRÓ-REITORIA DE ADMINISTRAÇÃO - PROAD
 RELATÓRIO MENSAL DE FISCALIZAÇÃO TÉCNICA - CLIMATIZAÇÃO E REFRIGERAÇÃO
 ========================================================================================
-Contrato nº: 14/2025 • Empresa: ClimaFrio Serviços e Comércio Ltda • CNPJ: 12.345.678/0001-90
-Processo SEI de Despesa: 23077.014298/2026-11 • Mês de Referência: 04/2026
+Contrato nº: 11/2026 • Empresa: L O DOS SANTOS ECOMSER • CNPJ: 63.034.369/0001-35
+Processo SEI de Despesa: 04410035.003671/2025-75 • Mês de Referência: 04/2026
 Resumo: 18 Chamados • 23 Máquinas Atendidas • Valor Total Medido: R$ 8.450,00
 ----------------------------------------------------------------------------------------
 ITEM | TOMBO  | UNIDADE/LOCAL           | SERVIÇO / ITENS CONTRATUAIS        | VALOR (R$) | TÉCNICO (NOME / CPF)     | ATESTE UERN (NOME / MATRÍCULA) | DATA ATESTE
@@ -194,7 +194,7 @@ ITEM | TOMBO  | UNIDADE/LOCAL           | SERVIÇO / ITENS CONTRATUAIS        | 
 ----------------------------------------------------------------------------------------
 TERMO DE RECEBIMENTO PROVISÓRIO:
 Atesto provisoriamente a execução dos serviços acima discriminados, em conformidade com as
-especificações do Contrato nº 14/2025.
+especificações do Contrato nº 11/2026.
 Fiscal Técnico: Prof. Dr. Fernando Santos • Matrícula UERN: 98765-4 • Data: 30/04/2026
 ========================================================================================
 ```

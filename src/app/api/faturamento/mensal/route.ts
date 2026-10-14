@@ -64,8 +64,8 @@ export async function GET(request: NextRequest) {
           descricaoServico: it.itensOrcamento.map((o) => `${o.itemPreco.descricao} (qtd: ${o.quantidade})`).join(', ') || it.descricaoDefeito || 'Reparo e revisão',
           valorTotal: v,
           // Técnico da Empresa
-          tecnicoNome: it.nomeTecnicoEmpresa || 'Carlos Lima',
-          tecnicoCpf: it.cpfTecnicoEmpresa || '456.789.012-34',
+          tecnicoNome: it.nomeTecnicoEmpresa || 'Josemildo (Preposto)',
+          tecnicoCpf: it.cpfTecnicoEmpresa || '630.343.690-01',
           // Servidor Aceitante UERN
           servidorAtestanteNome: it.aceiteTacito ? 'Homologação Tácita (Decurso de Prazo)' : (it.nomeServidorAtestante || ch.demandante.nome),
           servidorAtestanteMatricula: it.aceiteTacito ? 'SISTEMA_PROAD' : (it.matriculaServidorAtestante || ch.demandante.matricula || '12345-6'),

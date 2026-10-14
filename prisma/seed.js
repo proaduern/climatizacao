@@ -23,22 +23,27 @@ async function main() {
     });
   }
 
-  // 2. Empresa Fornecedora
+  // 2. Empresa Fornecedora (Oficial SGC)
   const empresa = await prisma.empresa.upsert({
-    where: { cnpj: '12.345.678/0001-90' },
-    update: {},
+    where: { cnpj: '63.034.369/0001-35' },
+    update: {
+      razaoSocial: 'L O DOS SANTOS ECOMSER',
+      nomeFantasia: 'L O DOS SANTOS ECOMSER',
+      telefone: '(84) 921685387',
+      email: 'ebenezerecomser@gmail.com',
+    },
     create: {
-      cnpj: '12.345.678/0001-90',
-      razaoSocial: 'ClimaFrio Serviços e Comércio de Refrigeração Ltda',
-      nomeFantasia: 'ClimaFrio Engenharia Térmica',
-      telefone: '(84) 3321-9988',
-      email: 'contato@climafrio.com.br',
+      cnpj: '63.034.369/0001-35',
+      razaoSocial: 'L O DOS SANTOS ECOMSER',
+      nomeFantasia: 'L O DOS SANTOS ECOMSER',
+      telefone: '(84) 921685387',
+      email: 'ebenezerecomser@gmail.com',
     },
   });
 
   // 3. Contrato Vigente do SGC
   const contrato = await prisma.contratoClima.upsert({
-    where: { numeroContrato: 'Contrato nº 14/2025' },
+    where: { numeroContrato: '11/2026' },
     update: {
       isReferenciaAtiva: true,
       prazoAtendimentoHorasRegular: 72,
@@ -47,13 +52,13 @@ async function main() {
       diasPrazoAtesteDemandante: 5,
     },
     create: {
-      numeroContrato: 'Contrato nº 14/2025',
-      processoSeiMae: '23077.014298/2025-11',
+      numeroContrato: '11/2026',
+      processoSeiMae: '04410035.003671/2025-75',
       empresaId: empresa.id,
-      valorGlobal: 180000.0,
-      saldoDisponivel: 164200.0,
-      vigenciaInicio: new Date('2025-01-01'),
-      vigenciaFim: new Date('2026-12-31'),
+      valorGlobal: 1166605.42,
+      saldoDisponivel: 1166605.42,
+      vigenciaInicio: new Date('2026-07-08'),
+      vigenciaFim: new Date('2028-07-07'),
       ativo: true,
       isReferenciaAtiva: true,
       prazoAtendimentoHorasRegular: 72,
@@ -129,7 +134,15 @@ async function main() {
       unidadeId: unidades['PROAD'].id,
     },
     {
-      nome: 'Carlos Lima (Técnico ClimaFrio)',
+      nome: 'Josemildo (Preposto • L O DOS SANTOS ECOMSER)',
+      email: 'ebenezerecomser@gmail.com',
+      cpf: '630.343.690-01',
+      matricula: null,
+      role: RoleUsuario.EMPRESA,
+      empresaId: empresa.id,
+    },
+    {
+      nome: 'Carlos Lima (Técnico Executor • L O DOS SANTOS)',
       email: 'carlos.tecnico@climafrio.com.br',
       cpf: '456.789.012-34',
       matricula: null,

@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { syncContratoClimaFromSgc } from '@/lib/sgc-sync';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const forceSync = searchParams.get('forceSync') === 'true';
+
     let contrato = await prisma.contratoClima.findFirst({
       where: { isReferenciaAtiva: true, ativo: true },
       include: {
@@ -14,6 +18,29 @@ export async function GET() {
         },
       },
     });
+
+    // Se solicitado forceSync, ou se não houver contrato, ou se o contrato ainda for o fictício (14/2025 ou <50 itens):
+    const isMockContract = !contrato ||
+      contrato.numeroContrato.includes('14/2025') ||
+      contrato.empresa?.razaoSocial?.toLowerCase().includes('climafrio') ||
+      contrato.itensPreco.length < 50;
+
+    if (forceSync || isMockContract) {
+      try {
+        await syncContratoClimaFromSgc();
+        contrato = await prisma.contratoClima.findFirst({
+          where: { isReferenciaAtiva: true, ativo: true },
+          include: {
+            empresa: true,
+            itensPreco: {
+              orderBy: { numeroItem: 'asc' },
+            },
+          },
+        });
+      } catch (syncErr: any) {
+        console.warn('[CONTRATO_SYNC_WARN] Falha durante auto-sync:', syncErr?.message || syncErr);
+      }
+    }
 
     if (!contrato) {
       // Fallback: pega o mais recente
@@ -60,6 +87,7 @@ export async function GET() {
         percentualConsumido: Number(((totalConsumido / Number(contrato.valorGlobal)) * 100).toFixed(2)),
         vigenciaInicio: contrato.vigenciaInicio,
         vigenciaFim: contrato.vigenciaFim,
+        autoSincronizadoEm: contrato.autoSincronizadoEm,
         prazoAtendimentoHorasRegular: contrato.prazoAtendimentoHorasRegular,
         prazoAtendimentoHorasUrgente: contrato.prazoAtendimentoHorasUrgente,
         diasGarantiaPadrao: contrato.diasGarantiaPadrao,
@@ -74,6 +102,18 @@ export async function GET() {
           saldoQuantidade: item.saldoQuantidade,
         })),
       },
+    });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const result = await syncContratoClimaFromSgc();
+    return NextResponse.json({
+      mensagem: 'Contrato e itens de preços sincronizados com sucesso a partir do SGC!',
+      ...result,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -40,6 +40,12 @@ export default function HomePage() {
   // Dados do Contrato
   const [contratoData, setContratoData] = useState<any>(null);
   const [loadingContrato, setLoadingContrato] = useState(true);
+  const [sincronizandoSgc, setSincronizandoSgc] = useState(false);
+  const [mensagemSgc, setMensagemSgc] = useState<string | null>(null);
+
+  // Filtros de Itens no Modal de Orçamento
+  const [buscaItemOrcamento, setBuscaItemOrcamento] = useState('');
+  const [cidadeFiltroOrcamento, setCidadeFiltroOrcamento] = useState('TODOS');
 
   // Tabs: 'chamados' | 'novo' | 'inventario' | 'faturamento' | 'configuracao'
   const [activeTab, setActiveTab] = useState<'chamados' | 'novo' | 'inventario' | 'faturamento' | 'configuracao'>('chamados');
@@ -122,15 +128,36 @@ export default function HomePage() {
     }
   };
 
-  const carregarContrato = async () => {
+  const carregarContrato = async (force?: boolean) => {
     try {
-      const res = await fetch('/api/contrato');
+      const res = await fetch(`/api/contrato${force ? '?forceSync=true' : ''}`);
       if (res.ok) {
         const data = await res.json();
         setContratoData(data);
       }
     } finally {
       setLoadingContrato(false);
+    }
+  };
+
+  const handleSincronizarSgc = async () => {
+    setSincronizandoSgc(true);
+    setMensagemSgc(null);
+    try {
+      const res = await fetch('/api/contrato', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        await carregarContrato(true);
+        setMensagemSgc(`SGC Sincronizado com sucesso! Contrato nº ${data?.contrato?.numeroContrato} (${data?.contrato?.totalItens || 108} itens).`);
+        setTimeout(() => setMensagemSgc(null), 6000);
+      } else {
+        const err = await res.json();
+        alert(`Erro na sincronização: ${err.error || 'Erro desconhecido'}`);
+      }
+    } catch (e: any) {
+      alert(`Falha ao conectar com o serviço de sincronização: ${e.message}`);
+    } finally {
+      setSincronizandoSgc(false);
     }
   };
 
@@ -622,21 +649,57 @@ export default function HomePage() {
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-950 via-[#002244] to-slate-900 border border-blue-500/30 p-6 shadow-xl">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
             <div>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/15 border border-cyan-400/30 text-cyan-300 text-xs font-semibold mb-2">
-                <Sparkles className="w-3.5 h-3.5 text-cyan-400" /> Sincronizado com SGC • Contrato Ativo
-              </div>
-              <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2">
-                <span>{contratoData?.contrato?.numeroContrato || 'Contrato nº 14/2025'}</span>
-                <span className="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded font-normal">
-                  Vigente até 31/12/2026
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/15 border border-cyan-400/30 text-cyan-300 text-xs font-semibold">
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" /> Sincronizado com SGC • Contrato Ativo
                 </span>
+                <button
+                  type="button"
+                  onClick={handleSincronizarSgc}
+                  disabled={sincronizandoSgc}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800/90 hover:bg-slate-800 border border-white/20 text-[11px] text-slate-200 transition shadow-sm"
+                  title="Puxar dados atualizados do contrato e itens do SGC"
+                >
+                  <RefreshCw className={`w-3 h-3 ${sincronizandoSgc ? 'animate-spin text-cyan-400' : 'text-slate-400'}`} />
+                  <span>{sincronizandoSgc ? 'Sincronizando com SGC...' : 'Sincronizar com SGC'}</span>
+                </button>
+              </div>
+
+              {mensagemSgc && (
+                <div className="mb-2 p-2 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                  <span>{mensagemSgc}</span>
+                </div>
+              )}
+
+              <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2">
+                <span>
+                  {contratoData?.contrato?.numeroContrato
+                    ? (contratoData.contrato.numeroContrato.startsWith('Contrato') ? contratoData.contrato.numeroContrato : `Contrato nº ${contratoData.contrato.numeroContrato}`)
+                    : 'Contrato nº 11/2026'}
+                </span>
+                {contratoData?.contrato?.vigenciaFim && (
+                  <span className="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded font-normal">
+                    Vigente até {new Date(contratoData.contrato.vigenciaFim).toLocaleDateString('pt-BR')}
+                  </span>
+                )}
               </h2>
               <p className="text-xs text-slate-300 mt-1">
                 Empresa Contratada:{' '}
                 <strong className="text-amber-300">
-                  {contratoData?.contrato?.empresa?.razaoSocial || 'ClimaFrio Serviços e Comércio Ltda'}
+                  {contratoData?.contrato?.empresa?.razaoSocial || 'L O DOS SANTOS ECOMSER'}
                 </strong>{' '}
-                • Processo SEI: {contratoData?.contrato?.processoSeiMae}
+                {contratoData?.contrato?.empresa?.cnpj && (
+                  <span className="text-slate-400 font-mono text-[11px] ml-1">
+                    (CNPJ: {contratoData.contrato.empresa.cnpj})
+                  </span>
+                )}
+                {contratoData?.contrato?.processoSeiMae && (
+                  <span> • Processo SEI: <strong className="text-slate-200">{contratoData.contrato.processoSeiMae}</strong></span>
+                )}
+                {contratoData?.contrato?.itensPreco?.length > 0 && (
+                  <span className="ml-2 text-cyan-300 font-medium">({contratoData.contrato.itensPreco.length} itens da planilha oficial)</span>
+                )}
               </p>
             </div>
 
@@ -1505,33 +1568,104 @@ export default function HomePage() {
               <span>Orçamento Baseado na Planilha Contratual SGC</span>
             </h3>
 
-            <p className="text-xs text-slate-300">
-              Selecione as quantidades aplicadas de cada item contratual ({contratoData?.contrato?.numeroContrato}):
-            </p>
+            <div className="flex justify-between items-center text-xs text-slate-300">
+              <span>Selecione as quantidades aplicadas da planilha oficial do SGC:</span>
+              <span className="text-cyan-300 font-semibold">{contratoData?.contrato?.itensPreco?.length || 0} itens disponíveis</span>
+            </div>
 
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-              {contratoData?.contrato?.itensPreco?.map((item: any) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-white/10 text-xs"
-                >
-                  <div className="flex-1 pr-2">
-                    <span className="font-semibold text-white">{item.descricao}</span>
-                    <div className="text-[11px] text-amber-300 font-bold">R$ {item.valorUnitario.toFixed(2)} / {item.unidadeMedida}</div>
+            {/* Barra de Busca de Itens & Chips de Cidade/Campus */}
+            <div className="space-y-2">
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Pesquisar item, serviço ou cidade na planilha..."
+                  value={buscaItemOrcamento}
+                  onChange={(e) => setBuscaItemOrcamento(e.target.value)}
+                  className="w-full bg-slate-950 border border-white/15 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] scrollbar-thin">
+                {['TODOS', 'Mossoró', 'Assu', 'Pau dos Ferros', 'Patu', 'Natal', 'Caicó', 'Split', 'Preventiva'].map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => setCidadeFiltroOrcamento(chip)}
+                    className={`px-2.5 py-0.5 rounded-full border transition whitespace-nowrap ${
+                      cidadeFiltroOrcamento === chip
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold'
+                        : 'bg-slate-800/60 text-slate-400 border-white/10 hover:text-white'
+                    }`}
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              {contratoData?.contrato?.itensPreco
+                ?.filter((item: any) => {
+                  const matchBusca = !buscaItemOrcamento ||
+                    item.descricao.toLowerCase().includes(buscaItemOrcamento.toLowerCase()) ||
+                    String(item.numeroItem).includes(buscaItemOrcamento);
+                  const matchCampus = cidadeFiltroOrcamento === 'TODOS' ||
+                    (item.descricao && item.descricao.toLowerCase().includes(cidadeFiltroOrcamento.toLowerCase())) ||
+                    (item.codigo && item.codigo.toLowerCase().includes(cidadeFiltroOrcamento.toLowerCase()));
+                  return matchBusca && matchCampus;
+                })
+                .map((item: any) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-white/10 text-xs hover:border-white/20 transition"
+                  >
+                    <div className="flex-1 pr-3">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="text-[10px] font-mono font-bold bg-slate-800 text-cyan-300 px-1.5 py-0.5 rounded border border-white/10">
+                          Item {item.numeroItem}
+                        </span>
+                        {item.codigo && item.codigo !== `ITEM-${item.numeroItem}` && (
+                          <span className="text-[10px] text-slate-400">({item.codigo})</span>
+                        )}
+                      </div>
+                      <span className="font-semibold text-white leading-snug block">{item.descricao}</span>
+                      <div className="text-[11px] text-amber-300 font-bold mt-0.5">
+                        R$ {Number(item.valorUnitario).toFixed(2)} / {item.unidadeMedida}
+                        {item.saldoQuantidade > 0 && (
+                          <span className="text-slate-400 font-normal ml-2 text-[10px]">
+                            • Saldo: {item.saldoQuantidade} {item.unidadeMedida}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="Qtd"
+                      value={itensOrcados[item.id] || ''}
+                      onChange={(e) =>
+                        setItensOrcados({ ...itensOrcados, [item.id]: parseFloat(e.target.value) || 0 })
+                      }
+                      className="w-16 bg-slate-900 border border-white/15 rounded-lg px-2 py-1 text-center text-xs text-white focus:outline-none focus:border-amber-400"
+                    />
                   </div>
+                ))}
+            </div>
 
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="Qtd"
-                    value={itensOrcados[item.id] || ''}
-                    onChange={(e) =>
-                      setItensOrcados({ ...itensOrcados, [item.id]: parseFloat(e.target.value) || 0 })
-                    }
-                    className="w-16 bg-slate-900 border border-white/15 rounded-lg px-2 py-1 text-center text-xs text-white"
-                  />
-                </div>
-              ))}
+            {/* Totalizador em Tempo Real */}
+            <div className="flex justify-between items-center p-3 rounded-xl bg-slate-950 border border-amber-500/30">
+              <span className="text-xs text-slate-400">Total Previsto da Demanda:</span>
+              <span className="text-sm font-extrabold text-amber-300">
+                R${' '}
+                {Object.entries(itensOrcados)
+                  .reduce((acc, [itemId, qtd]) => {
+                    const it = contratoData?.contrato?.itensPreco?.find((i: any) => i.id === itemId);
+                    return acc + (it ? Number(it.valorUnitario) * Number(qtd) : 0);
+                  }, 0)
+                  .toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
             </div>
 
             <div>

@@ -47,9 +47,16 @@ export default function Navbar({ currentUser, onRoleSwitched }: NavbarProps) {
     },
     {
       role: 'EMPRESA',
+      nome: 'Josemildo (Preposto)',
+      email: 'ebenezerecomser@gmail.com',
+      cargo: 'Preposto • L O DOS SANTOS ECOMSER',
+      badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+    },
+    {
+      role: 'EMPRESA',
       nome: 'Carlos Lima',
       email: 'carlos.tecnico@climafrio.com.br',
-      cargo: 'Técnico Executor • ClimaFrio',
+      cargo: 'Técnico de Campo • L O DOS SANTOS',
       badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
     },
     {
@@ -117,7 +124,7 @@ export default function Navbar({ currentUser, onRoleSwitched }: NavbarProps) {
                 <div className="text-[10px] text-slate-400">
                   {currentUser?.role === 'ADMIN' && '👑 Admin PROAD'}
                   {currentUser?.role === 'DEMANDANTE' && `🏛️ ${currentUser?.unidadeSigla || 'Unidade'}`}
-                  {currentUser?.role === 'EMPRESA' && '🛠️ ClimaFrio Prestadora'}
+                  {currentUser?.role === 'EMPRESA' && (currentUser?.empresaRazaoSocial ? `🛠️ ${currentUser.empresaRazaoSocial}` : '🛠️ L O DOS SANTOS Prestadora')}
                   {currentUser?.role === 'FISCAL_TECNICO' && '📐 Fiscal Técnico'}
                 </div>
               </div>
