@@ -1,0 +1,464 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ==========================================
+// ENUMS DO DOMÍNIO DE CLIMATIZAÇÃO & SGC
+// ==========================================
+
+enum RoleUsuario {
+  ADMIN              // Gestor Central PROAD / Infraestrutura
+  FISCAL_TECNICO     // Fiscal Técnico do Contrato (ateste provisório mensal e relatórios)
+  FISCAL_ADM         // Fiscal Administrativo (conformidade e processo de despesa no SGC)
+  GESTOR_CONTRATO    // Gestor do Contrato no SGC (recebimento definitivo)
+  DEMANDANTE         // Servidor da Unidade UERN (abertura, acompanhamento e ateste)
+  EMPRESA            // Prestadora de serviço contratada (técnicos e prepostos)
+}
+
+enum TipoEquipamento {
+  AR_CONDICIONADO        // Split Hi-Wall, Cassete, Piso Teto, Janela, etc.
+  REFRIGERADOR_FREEZER   // Geladeira 1 porta, duplex, freezer horizontal/vertical
+  BEBEDOURO_INDUSTRIAL   // Bebedouros de coluna inox de pressão/torneiras
+  GELAGUA                // Purificador/Gelágua de garrafão ou bancada
+}
+
+enum StatusEquipamento {
+  ATIVO                  // Em pleno funcionamento na unidade
+  EM_MANUTENCAO          // Com chamado/intervenção em andamento (bloqueado anti-duplicidade)
+  DESINSTALADO_DEPOSITO  // Retirado da sala e encaminhado a patrimônio/depósito
+  BAIXADO_INSERVIVEL     // Condenado com laudo técnico anexado
+}
+
+enum TipoModeloGelagua {
+  COLUNA
+  BANCADA
+}
+
+enum TipoRefrigerador {
+  REFRIGERADOR_1_PORTA
+  REFRIGERADOR_DUPLEX
+  FREEZER_VERTICAL
+  FREEZER_HORIZONTAL
+}
+
+enum CategoriaServico {
+  INSTALACAO
+  DESINSTALACAO
+  MANUTENCAO_PREVENTIVA
+  MANUTENCAO_CORRETIVA
+  REPARO_GARANTIA
+}
+
+enum SubtipoInstalacao {
+  SUBSTITUINDO_MAQUINA_EXISTENTE
+  NOVA_COM_PONTO_E_DRENO_EXISTENTES
+  NOVA_SEM_PONTO_E_SEM_DRENO
+}
+
+enum DefeitoCorretivaComum {
+  NAO_GELA
+  NAO_LIGA
+  PINGANDO_DENTRO_DA_SALA
+  RUIDO_EXCESSIVO
+  ODOR_DESAGRADAVEL
+  VAZAMENTO_DE_GAS
+  OUTRO
+}
+
+enum StatusChamado {
+  ABERTO                    // Aberto pelo demandante da Unidade
+  EM_TRIAGEM                // Encaminhado à empresa prestadora
+  AGUARDANDO_ORCAMENTO      // Empresa em vistoria/diagnóstico in loco
+  ORCAMENTO_ANEXADO         // Empresa enviou orçamento baseado nos itens do SGC
+  ORCAMENTO_REJEITADO       // Admin PROAD contestou valores ou itens
+  APROVADO_EM_EXECUCAO      // Admin PROAD autorizou a execução
+  AGUARDANDO_CONFIRMACAO    // Empresa concluiu e juntou fotos/laudo (abre prazo de 5 dias)
+  CONFIRMADO_PELO_DEMANDANTE // Demandante testou e atestou ativamente no sistema
+  CONFIRMADO_TACITAMENTE    // Prazo expirou sem manifestação -> aceite tácito
+  REJEITADO_SOLUCAO         // Demandante reprovou o serviço -> volta para a empresa refazer
+  FINALIZADO                // Concluído, atestado e apto para faturamento mensal
+  CANCELADO                 // Cancelado com justificativa
+}
+
+enum StatusMedicaoMensal {
+  EM_ABERTO                 // Mês corrente acumulando intervenções concluídas
+  AGUARDANDO_RECEBIMENTO_PROVISORIO // Relatório emitido, aguardando Fiscal Técnico
+  RECEBIMENTO_PROVISORIO_EMITIDO    // Fiscal Técnico atestou provisoriamente
+  SINCRONIZADO_SGC          // Medição enviada ao SGC para rotinas do Fiscal Adm
+  RECEBIMENTO_DEFINITIVO    // Gestor atestou definitivamente no SGC
+}
+
+// ==========================================
+// UNIDADES E USUÁRIOS (INTEGRAÇÃO PORTAL PROAD)
+// ==========================================
+
+model Unidade {
+  id           String        @id @default(uuid())
+  sigla        String        @unique // Ex: "FAFIC", "PROAD", "CAMPUS-ASSU"
+  nome         String
+  campus       String
+  ativo        Boolean       @default(true)
+  criadoEm     DateTime      @default(now())
+
+  usuarios     Usuario[]
+  equipamentos Equipamento[]
+  chamados     Chamado[]
+
+  @@map("clima_unidades")
+}
+
+model Usuario {
+  id           String        @id @default(uuid())
+  nome         String
+  email        String        @unique
+  cpf          String        @unique
+  matricula    String?       // Obrigatório para servidores UERN
+  role         RoleUsuario   @default(DEMANDANTE)
+  
+  unidadeId    String?
+  unidade      Unidade?      @relation(fields: [unidadeId], references: [id], onDelete: SetNull)
+
+  empresaId    String?
+  empresa      Empresa?      @relation(fields: [empresaId], references: [id], onDelete: SetNull)
+
+  ativo        Boolean       @default(true)
+  criadoEm     DateTime      @default(now())
+  atualizadoEm DateTime      @updatedAt
+
+  chamadosAbertos        Chamado[]          @relation("DemandanteChamado")
+  intervencoesAtestadas  IntervencaoItem[]  @relation("AtestanteUern")
+  intervencoesExecutadas IntervencaoItem[]  @relation("TecnicoExecutor")
+  medicoesAtestadas      MedicaoMensal[]    @relation("FiscalTecnicoMedicao")
+  historicosCriados      HistoricoChamado[]
+
+  @@map("clima_usuarios")
+}
+
+// ==========================================
+// CONTRATOS E ITENS (INTEGRAÇÃO SGC)
+// ==========================================
+
+model Empresa {
+  id               String          @id @default(uuid())
+  cnpj             String          @unique
+  razaoSocial      String
+  nomeFantasia     String?
+  telefone         String?
+  email            String?
+  ativo            Boolean         @default(true)
+
+  contratos        ContratoClima[]
+  usuarios         Usuario[]
+  chamadosAtendidos Chamado[]
+
+  @@map("clima_empresas")
+}
+
+model ContratoClima {
+  id                  String          @id @default(uuid())
+  sgcContratoId       String?         @unique // UUID do contrato no SGC
+  numeroContrato      String          @unique // Ex: "Contrato nº 14/2025"
+  processoSeiMae      String          // Ex: "23077.014298/2025-11"
+  empresaId           String
+  empresa             Empresa         @relation(fields: [empresaId], references: [id])
+  
+  valorGlobal         Decimal         @db.Decimal(14, 2)
+  saldoDisponivel     Decimal         @db.Decimal(14, 2)
+  vigenciaInicio      DateTime
+  vigenciaFim         DateTime
+  ativo               Boolean         @default(true)
+  isReferenciaAtiva   Boolean         @default(true) // Auto-ativado ao detectar contrato vigente no SGC
+  autoSincronizadoEm  DateTime?       // Registro de auto-discovery com o SGC
+
+  // Parametrizações Complementares (Configuráveis pelo Admin)
+  prazoAtendimentoHorasRegular Int       @default(72)  // SLA em horas úteis para início
+  prazoAtendimentoHorasUrgente Int       @default(24)  // SLA para chamados prioritários/emergenciais
+  diasGarantiaPadrao           Int       @default(90)  // Prazo padrão de garantia do serviço
+  diasPrazoAtesteDemandante    Int       @default(5)   // Prazo em dias úteis para ateste antes do tácito
+
+  itensPreco          ItemContratoPreco[]
+  medicoesMensais     MedicaoMensal[]
+  chamados            Chamado[]
+
+  criadoEm            DateTime        @default(now())
+  atualizadoEm        DateTime        @updatedAt
+
+  @@map("clima_contratos")
+}
+
+model ItemContratoPreco {
+  id                  String          @id @default(uuid())
+  contratoId          String
+  contrato            ContratoClima   @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  
+  sgcItemId           String?         // UUID do ContratoItem no SGC
+  numeroItem          Int             // Item 1, 2, 3...
+  codigo              String?         // Ex: "SERV-AC-01"
+  descricao           String          // Ex: "Higienização Split até 18k BTUs"
+  unidadeMedida       String          // "UN", "SERVIÇO", "PEÇA"
+  valorUnitario       Decimal         @db.Decimal(12, 2)
+  saldoQuantidade     Float           @default(0)
+
+  orcamentoItens      OrcamentoItemDetalhamento[]
+
+  @@unique([contratoId, numeroItem])
+  @@map("clima_itens_contrato_preco")
+}
+
+// ==========================================
+// EQUIPAMENTOS E INVENTÁRIO TÉRMICO
+// ==========================================
+
+model Equipamento {
+  id                String            @id @default(uuid())
+  unidadeId         String
+  unidade           Unidade           @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+  
+  tombo             String            // Tombo/Patrimônio UERN
+  tipo              TipoEquipamento
+  marca             String
+  modelo            String?
+  localizacao       String            // Sala 04, Bloco D, Lab de Redes
+  status            StatusEquipamento @default(ATIVO)
+
+  // 1. Ar-Condicionado
+  btus              Int?              // 9000, 12000, 18000, 24000, 30000, 60000
+  tipoAc            String?           // Split Hi-Wall, Cassete, Piso Teto, Janela, VRF
+  gasRefrigerante   String?           // R410A, R32, R22
+  tecnologiaInverter Boolean?         @default(true)
+
+  // 2. Refrigerador / Freezer
+  litragem          Int?              // Capacidade em litros
+  tipoRefrigerador  TipoRefrigerador?
+
+  // 3. Bebedouro Industrial
+  qtdTorneiras      Int?              // 2, 3, 4 torneiras
+  capacidadeLitros  Int?              // 50L, 100L, 200L
+
+  // 4. Gelágua / Purificador
+  modeloGelagua     TipoModeloGelagua? // COLUNA ou BANCADA
+  refrigeracaoEletronica Boolean?      @default(false)
+
+  // Retificação Técnica pela Empresa
+  retificadoPelaEmpresa Boolean       @default(false)
+  retificadoEm          DateTime?
+  retificadoPorNome     String?
+  observacaoRetificacao String?
+
+  // Controle de Garantia Ativa
+  emGarantiaAte         DateTime?     // Fim da vigência da garantia (90 dias pós-reparo)
+  ultimoChamadoId       String?
+
+  criadoEm          DateTime          @default(now())
+  atualizadoEm      DateTime          @updatedAt
+
+  intervencoes      IntervencaoItem[]
+
+  @@unique([unidadeId, tombo])        // Tombo único por unidade
+  @@index([unidadeId])
+  @@index([tombo])
+  @@index([status])
+  @@map("clima_equipamentos")
+}
+
+// ==========================================
+// CHAMADOS E INTERVENÇÕES POR MÁQUINA
+// ==========================================
+
+model Chamado {
+  id                    String        @id @default(uuid())
+  numeroProtocolo       String        @unique // Ex: "CLIMA-2026-00042"
+  
+  unidadeId             String
+  unidade               Unidade       @relation(fields: [unidadeId], references: [id], onDelete: Restrict)
+
+  demandanteId          String
+  demandante            Usuario       @relation("DemandanteChamado", fields: [demandanteId], references: [id], onDelete: Restrict)
+
+  contratoId            String?
+  contrato              ContratoClima? @relation(fields: [contratoId], references: [id], onDelete: SetNull)
+
+  empresaId             String?
+  empresa               Empresa?      @relation(fields: [empresaId], references: [id], onDelete: SetNull)
+
+  status                StatusChamado @default(ABERTO)
+  tituloDemanda         String        // Ex: "Substituição de Ar na Sala 03", "Manutenção Ar Gabinete"
+  descricaoGeral        String
+
+  // Fase Orçamento Geral do Chamado
+  orcamentoValorTotal   Decimal?      @db.Decimal(12, 2)
+  orcamentoAprovadoPor  String?       // E-mail ou ID do Admin PROAD
+  orcamentoAprovadoEm   DateTime?
+  orcamentoMotivoRejeicao String?
+
+  // Linha do Tempo, Barra de Progresso e SLAs
+  percentualEvolucao    Int           @default(15)  // 15% (Aberto), 35% (Orçamento), 65% (Execução), 85% (Ateste), 100% (Finalizado)
+  etapaAtualDescricao   String        @default("Chamado Aberto - Aguardando Triagem")
+  prazoLimiteAtendimento DateTime?    // Data/hora limite de início/atendimento conforme SLA do contrato
+  atendidoNoPrazo       Boolean?      // True se a empresa atendeu dentro do prazo estipulado
+
+  // Fase Conclusão & Prazos
+  dataExecucaoConclusao DateTime?
+  dataLimiteConfirmacao DateTime?     // dataConclusao + 5 dias úteis (Timer Tácito)
+  confirmacaoTacita     Boolean       @default(false)
+  motivoRejeicaoSolucao String?
+
+  // Fase Avaliação (Demandante ou Tácita 4.0)
+  rating                Float?        // 1.0 a 5.0 (ou 4.0 se tácito)
+  avaliacaoAutomatica   Boolean       @default(false) // True se nota 4.0 atribuída por decurso de prazo
+  comentarioAvaliacao   String?
+  avaliadoEm            DateTime?
+
+  // Faturamento Mensal Vinculado
+  medicaoMensalId       String?
+  medicaoMensal         MedicaoMensal? @relation(fields: [medicaoMensalId], references: [id], onDelete: SetNull)
+
+  criadoEm              DateTime      @default(now())
+  atualizadoEm          DateTime      @updatedAt
+
+  intervencoes          IntervencaoItem[]
+  historicos            HistoricoChamado[]
+
+  @@index([unidadeId])
+  @@index([status])
+  @@index([medicaoMensalId])
+  @@map("clima_chamados")
+}
+
+model IntervencaoItem {
+  id                    String            @id @default(uuid())
+  chamadoId             String
+  chamado               Chamado           @relation(fields: [chamadoId], references: [id], onDelete: Cascade)
+
+  equipamentoId         String
+  equipamento           Equipamento       @relation(fields: [equipamentoId], references: [id], onDelete: Restrict)
+
+  categoriaServico      CategoriaServico
+  
+  // Parâmetros Específicos se Instalação
+  subtipoInstalacao     SubtipoInstalacao?
+  maquinaSubstituidaId  String?           // Se for instalação substituindo máquina antiga
+
+  // Parâmetros Específicos se Corretiva
+  defeitoComum          DefeitoCorretivaComum?
+  descricaoDefeito      String?
+
+  // Parâmetros Específicos se Desinstalação
+  destinoMaquinaRetirada String?          // "DEPOSITO_CAMPUS", "BAIXA_PATRIMONIAL", etc.
+
+  // Controle de Garantia Ativa
+  emGarantia            Boolean           @default(false)
+  intervencaoGarantiaOrigemId String?
+
+  // Comprovação Técnica pela Empresa
+  tecnicoExecutorId     String?
+  tecnicoExecutor       Usuario?          @relation("TecnicoExecutor", fields: [tecnicoExecutorId], references: [id], onDelete: SetNull)
+  nomeTecnicoEmpresa    String?           // Nome do técnico que executou
+  cpfTecnicoEmpresa     String?           // CPF do técnico (para o relatório em PDF)
+  
+  laudoTecnico          String?           // Obrigatório caso máquina seja condenada/inservível
+  maquinaCondenada      Boolean           @default(false)
+  fotosAntesUrls        String[]
+  fotosDepoisUrls       String[]
+
+  // Ateste do Demandante (Substitui OS em Papel)
+  atestadoPorId         String?
+  atestadoPor           Usuario?          @relation("AtestanteUern", fields: [atestadoPorId], references: [id], onDelete: SetNull)
+  nomeServidorAtestante String?           // Nome do servidor que testou
+  matriculaServidorAtestante String?      // Matrícula do servidor (para o relatório em PDF)
+  dataAteste            DateTime?
+  aceiteTacito          Boolean           @default(false)
+
+  // Valores e Garantia
+  valorTotalIntervencao Decimal           @default(0.0) @db.Decimal(12, 2)
+  diasGarantiaConcedida Int               @default(90) // 90 dias padrão
+  garantiaValidaAte     DateTime?
+
+  itensOrcamento        OrcamentoItemDetalhamento[]
+
+  criadoEm              DateTime          @default(now())
+  atualizadoEm          DateTime          @updatedAt
+
+  @@index([chamadoId])
+  @@index([equipamentoId])
+  @@map("clima_intervencoes_itens")
+}
+
+model OrcamentoItemDetalhamento {
+  id                    String            @id @default(uuid())
+  intervencaoId         String
+  intervencao           IntervencaoItem   @relation(fields: [intervencaoId], references: [id], onDelete: Cascade)
+
+  itemPrecoId           String
+  itemPreco             ItemContratoPreco @relation(fields: [itemPrecoId], references: [id], onDelete: Restrict)
+
+  quantidade            Float             @default(1.0)
+  valorUnitarioContratual Decimal         @db.Decimal(12, 2)
+  valorTotal            Decimal           @db.Decimal(12, 2)
+
+  @@index([intervencaoId])
+  @@index([itemPrecoId])
+  @@map("clima_orcamentos_itens_detalhamento")
+}
+
+// ==========================================
+// FECHAMENTO MENSAL E INTEGRAÇÃO SGC
+// ==========================================
+
+model MedicaoMensal {
+  id                    String              @id @default(uuid())
+  contratoId            String
+  contrato              ContratoClima       @relation(fields: [contratoId], references: [id], onDelete: Restrict)
+
+  referenciaMesAno      String              // Ex: "04/2026"
+  processoSeiDespesa    String              // Informado pelo Fiscal Adm no SGC (ex: "23077.009876/2026-12")
+  status                StatusMedicaoMensal @default(EM_ABERTO)
+
+  quantidadeMaquinas    Int                 @default(0) // Quantidade total de máquinas atendidas
+  quantidadeChamados    Int                 @default(0) // Quantidade total de chamados atendidos
+  valorTotalMedicao     Decimal             @default(0.0) @db.Decimal(14, 2)
+
+  // Recebimento Provisório pelo Fiscal Técnico
+  fiscalTecnicoId       String?
+  fiscalTecnico         Usuario?            @relation("FiscalTecnicoMedicao", fields: [fiscalTecnicoId], references: [id], onDelete: SetNull)
+  nomeFiscalTecnico     String?
+  matriculaFiscalTecnico String?
+  dataRecebimentoProvisorio DateTime?
+  relatorioPdfUrl       String?             // PDF gerado para juntada no processo de pagamento
+
+  // Integração SGC
+  sgcMedicaoId          String?             // ID retornado pelo SGC ao registrar a medição
+  sincronizadoSgcEm     DateTime?
+
+  chamados              Chamado[]
+
+  criadoEm              DateTime            @default(now())
+  atualizadoEm          DateTime            @updatedAt
+
+  @@unique([contratoId, referenciaMesAno])
+  @@index([referenciaMesAno])
+  @@map("clima_medicoes_mensais")
+}
+
+model HistoricoChamado {
+  id             String         @id @default(uuid())
+  chamadoId      String
+  chamado        Chamado        @relation(fields: [chamadoId], references: [id], onDelete: Cascade)
+
+  statusAnterior StatusChamado?
+  statusNovo     StatusChamado
+  autorId        String?
+  autor          Usuario?       @relation(fields: [autorId], references: [id], onDelete: SetNull)
+  autorNome      String
+  mensagem       String
+  criadoEm       DateTime       @default(now())
+
+  @@index([chamadoId])
+  @@map("clima_historico_chamados")
+}
