@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
 
     let sgcContratos: any[] = [];
     try {
-      const res = await fetch(`${sgcUrl}/api/integracao/manutencao/contratos`, {
+      const res = await fetch(`${sgcUrl}/api/integracao/manutencao/contratos?tipo=CLIMATIZACAO`, {
         headers: {
           Authorization: `Bearer ${serviceKey}`,
         },
@@ -32,10 +32,14 @@ export async function POST(request: NextRequest) {
     });
 
     if (sgcContratos.length > 0) {
-      // Localiza contrato de climatização ou manutenção 14/2025
+      // Localiza contrato de climatização / refrigeração
       const sgcAlvo = sgcContratos.find((c: any) =>
-        (c.objeto && c.objeto.toLowerCase().includes('climatiza')) ||
-        (c.objeto && c.objeto.toLowerCase().includes('refrigera')) ||
+        (c.objeto && (
+          c.objeto.toLowerCase().includes('climatiza') ||
+          c.objeto.toLowerCase().includes('refrigera') ||
+          c.objeto.toLowerCase().includes('ar condicionado') ||
+          c.objeto.toLowerCase().includes('ar-condicionado')
+        )) ||
         (c.numeroContrato && c.numeroContrato.includes('14/2025'))
       ) || sgcContratos[0];
 
@@ -85,6 +89,36 @@ export async function POST(request: NextRequest) {
           },
           include: { empresa: true, itensPreco: true },
         });
+
+        // Sincroniza Itens da Tabela de Preços do SGC
+        if (sgcAlvo.itens && Array.isArray(sgcAlvo.itens) && sgcAlvo.itens.length > 0) {
+          for (const item of sgcAlvo.itens) {
+            await prisma.itemContratoPreco.upsert({
+              where: {
+                contratoId_numeroItem: {
+                  contratoId: contratoAtivo.id,
+                  numeroItem: item.numeroItem,
+                },
+              },
+              update: {
+                sgcItemId: item.id,
+                descricao: item.descricao,
+                unidadeMedida: item.unidadeMedida || 'UN',
+                valorUnitario: item.valorUnitario || 0,
+                saldoQuantidade: item.saldoQuantidade || 0,
+              },
+              create: {
+                contratoId: contratoAtivo.id,
+                sgcItemId: item.id,
+                numeroItem: item.numeroItem,
+                descricao: item.descricao,
+                unidadeMedida: item.unidadeMedida || 'UN',
+                valorUnitario: item.valorUnitario || 0,
+                saldoQuantidade: item.saldoQuantidade || 0,
+              },
+            });
+          }
+        }
       }
     }
 
