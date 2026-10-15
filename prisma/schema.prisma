@@ -94,23 +94,56 @@ enum StatusMedicaoMensal {
   RECEBIMENTO_DEFINITIVO    // Gestor atestou definitivamente no SGC
 }
 
+enum TipoAmbiente {
+  SALA_DE_AULA                              // PRIORITÁRIO: Vistoria e atendimento acelerados para não prejudicar aulas
+  LABORATORIO_PESQUISA_ININTERRUPTO         // PRIORITÁRIO: Crítico para integridade de amostras, reagentes e experimentos contínuos
+  SALA_ESTUDOS_BIBLIOTECA                   // PRIORITÁRIO: Garantir climatização e habitabilidade de estudo aos discentes
+  LABORATORIOS_DIVERSOS                     // Regular
+  OUTRAS_SALAS_USO_ACADEMICO                // Regular
+  AUDITORIO                                 // Regular
+  SALA_ADMINISTRATIVA                       // Regular
+  CORREDOR_PATIO                            // Regular
+}
+
 // ==========================================
 // UNIDADES E USUÁRIOS (INTEGRAÇÃO PORTAL PROAD)
 // ==========================================
 
 model Unidade {
-  id           String        @id @default(uuid())
-  sigla        String        @unique // Ex: "FAFIC", "PROAD", "CAMPUS-ASSU"
+  id           String            @id @default(uuid())
+  sigla        String            @unique // Ex: "FAFIC", "PROAD", "CAMPUS-ASSU"
   nome         String
   campus       String
-  ativo        Boolean       @default(true)
-  criadoEm     DateTime      @default(now())
+  cidade       String            @default("Mossoró") // Cidade oficial de vínculo (Mossoró, Assú, Pau dos Ferros, Caicó, Patu, Natal)
+  ativo        Boolean           @default(true)
+  criadoEm     DateTime          @default(now())
 
   usuarios     Usuario[]
   equipamentos Equipamento[]
   chamados     Chamado[]
+  ambientes    AmbienteUnidade[]
 
   @@map("clima_unidades")
+}
+
+model AmbienteUnidade {
+  id               String       @id @default(uuid())
+  unidadeId        String
+  unidade          Unidade      @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+
+  tipo             TipoAmbiente
+  descricaoDetalhe String       // Ex: "Sala de aula 02, Bloco e1", "Lab de Química Fina - Sala 102"
+  bloco            String?      // Opcional: Bloco ou prédio
+  ativo            Boolean      @default(true)
+  criadoEm         DateTime     @default(now())
+
+  chamados         Chamado[]
+  equipamentos     Equipamento[]
+
+  @@unique([unidadeId, descricaoDetalhe])
+  @@index([unidadeId])
+  @@index([tipo])
+  @@map("clima_ambientes_unidade")
 }
 
 model Usuario {
@@ -181,6 +214,7 @@ model ContratoClima {
   prazoAtendimentoHorasUrgente Int       @default(24)  // SLA para chamados prioritários/emergenciais
   diasGarantiaPadrao           Int       @default(90)  // Prazo padrão de garantia do serviço
   diasPrazoAtesteDemandante    Int       @default(5)   // Prazo em dias úteis para ateste antes do tácito
+  limiteAprovacaoAutomatica    Decimal   @default(1000.00) @db.Decimal(10, 2) // Limite em R$ para aprovação automática de orçamento
 
   itensPreco          ItemContratoPreco[]
   medicoesMensais     MedicaoMensal[]
@@ -226,6 +260,10 @@ model Equipamento {
   modelo            String?
   localizacao       String            // Sala 04, Bloco D, Lab de Redes
   status            StatusEquipamento @default(ATIVO)
+
+  // Vínculo com Ambiente da Unidade
+  ambienteId        String?
+  ambiente          AmbienteUnidade?  @relation(fields: [ambienteId], references: [id], onDelete: SetNull)
 
   // 1. Ar-Condicionado
   btus              Int?              // 9000, 12000, 18000, 24000, 30000, 60000
@@ -291,6 +329,12 @@ model Chamado {
   tituloDemanda         String        // Ex: "Substituição de Ar na Sala 03", "Manutenção Ar Gabinete"
   descricaoGeral        String
 
+  // Vínculo com Ambiente da Unidade e Priorização
+  ambienteId            String?
+  ambiente              AmbienteUnidade? @relation(fields: [ambienteId], references: [id], onDelete: SetNull)
+  tipoAmbiente          TipoAmbiente?
+  isAmbientePrioritario Boolean          @default(false) // True se Sala de Aula, Lab Ininterrupto ou Sala de Estudos
+
   // Fase Orçamento Geral do Chamado
   orcamentoValorTotal   Decimal?      @db.Decimal(12, 2)
   orcamentoAprovadoPor  String?       // E-mail ou ID do Admin PROAD
@@ -328,6 +372,8 @@ model Chamado {
   @@index([unidadeId])
   @@index([status])
   @@index([medicaoMensalId])
+  @@index([ambienteId])
+  @@index([isAmbientePrioritario])
   @@map("clima_chamados")
 }
 

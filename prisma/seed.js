@@ -5,22 +5,60 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('Iniciando seed do SIG-CLIMA UERN...');
 
-  // 1. Unidades
+  // 1. Unidades e Cidades
   const unidadesData = [
-    { sigla: 'PROAD', nome: 'Pró-Reitoria de Administração', campus: 'Central Mossoró' },
-    { sigla: 'FAFIC', nome: 'Faculdade de Filosofia e Ciências Sociais', campus: 'Central Mossoró' },
-    { sigla: 'DINF', nome: 'Departamento de Informática', campus: 'Central Mossoró' },
-    { sigla: 'CAMPUS-ASSU', nome: 'Campus Avançado de Assú', campus: 'Assú' },
-    { sigla: 'CAMPUS-PAU-DOS-FERROS', nome: 'Campus Avançado de Pau dos Ferros', campus: 'Pau dos Ferros' },
+    { sigla: 'PROAD', nome: 'Pró-Reitoria de Administração', campus: 'Central Mossoró', cidade: 'Mossoró' },
+    { sigla: 'FAFIC', nome: 'Faculdade de Filosofia e Ciências Sociais', campus: 'Central Mossoró', cidade: 'Mossoró' },
+    { sigla: 'DINF', nome: 'Departamento de Informática', campus: 'Central Mossoró', cidade: 'Mossoró' },
+    { sigla: 'CAMPUS-ASSU', nome: 'Campus Avançado de Assú', campus: 'Assú', cidade: 'Assú' },
+    { sigla: 'CAMPUS-PAU-DOS-FERROS', nome: 'Campus Avançado de Pau dos Ferros', campus: 'Pau dos Ferros', cidade: 'Pau dos Ferros' },
+    { sigla: 'CAMPUS-CAICO', nome: 'Campus de Caicó (CERES)', campus: 'Caicó', cidade: 'Caicó' },
+    { sigla: 'CAMPUS-PATU', nome: 'Campus Avançado de Patu', campus: 'Pau dos Ferros / Patu', cidade: 'Patu' },
+    { sigla: 'CAMPUS-NATAL', nome: 'Complexo Cultural / Campus Natal', campus: 'Natal', cidade: 'Natal' },
   ];
 
   const unidades = {};
   for (const u of unidadesData) {
     unidades[u.sigla] = await prisma.unidade.upsert({
       where: { sigla: u.sigla },
-      update: { nome: u.nome, campus: u.campus },
+      update: { nome: u.nome, campus: u.campus, cidade: u.cidade },
       create: u,
     });
+  }
+
+  // 1.1 Ambientes Padronizados da Unidade
+  const ambientesIniciais = [
+    { unidadeSigla: 'FAFIC', tipo: 'SALA_DE_AULA', descricaoDetalhe: 'Sala de aula 04, Bloco Central', bloco: 'Bloco Central' },
+    { unidadeSigla: 'FAFIC', tipo: 'SALA_ESTUDOS_BIBLIOTECA', descricaoDetalhe: 'Sala de Estudos Setorial FAFIC', bloco: 'Biblioteca Setorial' },
+    { unidadeSigla: 'FAFIC', tipo: 'SALA_ADMINISTRATIVA', descricaoDetalhe: 'Secretaria Acadêmica FAFIC', bloco: 'Bloco Central' },
+    { unidadeSigla: 'PROAD', tipo: 'SALA_ADMINISTRATIVA', descricaoDetalhe: 'Gabinete PROAD', bloco: 'Reitoria' },
+    { unidadeSigla: 'PROAD', tipo: 'SALA_ADMINISTRATIVA', descricaoDetalhe: 'Diretoria de Contratos e Convênios', bloco: 'Reitoria' },
+    { unidadeSigla: 'PROAD', tipo: 'AUDITORIO', descricaoDetalhe: 'Auditório da Reitoria / PROAD', bloco: 'Reitoria' },
+    { unidadeSigla: 'DINF', tipo: 'LABORATORIO_PESQUISA_ININTERRUPTO', descricaoDetalhe: 'Laboratório de Datacenter & Servidores (Ininterrupto)', bloco: 'Bloco DINF' },
+    { unidadeSigla: 'DINF', tipo: 'LABORATORIOS_DIVERSOS', descricaoDetalhe: 'Laboratório de Informática 01', bloco: 'Bloco DINF' },
+    { unidadeSigla: 'CAMPUS-ASSU', tipo: 'SALA_DE_AULA', descricaoDetalhe: 'Sala de aula 01, Pavilhão A', bloco: 'Pavilhão A' },
+    { unidadeSigla: 'CAMPUS-PAU-DOS-FERROS', tipo: 'SALA_DE_AULA', descricaoDetalhe: 'Sala de aula 03, Bloco Principal', bloco: 'Bloco Principal' },
+  ];
+
+  for (const amb of ambientesIniciais) {
+    const un = unidades[amb.unidadeSigla];
+    if (un) {
+      await prisma.ambienteUnidade.upsert({
+        where: {
+          unidadeId_descricaoDetalhe: {
+            unidadeId: un.id,
+            descricaoDetalhe: amb.descricaoDetalhe,
+          },
+        },
+        update: { tipo: amb.tipo, bloco: amb.bloco },
+        create: {
+          unidadeId: un.id,
+          tipo: amb.tipo,
+          descricaoDetalhe: amb.descricaoDetalhe,
+          bloco: amb.bloco,
+        },
+      });
+    }
   }
 
   // 2. Empresa Fornecedora (Oficial SGC)

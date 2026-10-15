@@ -22,6 +22,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       where: { id },
       include: {
         contrato: true,
+        ambiente: true,
         intervencoes: { include: { equipamento: true } },
       },
     });
@@ -50,21 +51,50 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
             },
           });
 
-          // Atualiza status do equipamento para ATIVO e ativa a garantia
-          if (inter.categoriaServico !== 'DESINSTALACAO') {
+          // REGRA DE OURO: VINCULAÇÃO E DESVINCULAÇÃO DE AMBIENTE
+          if (inter.categoriaServico === 'DESINSTALACAO') {
+            // Máquina desinstalada é desvinculada do ambiente e enviada ao depósito
+            await tx.equipamento.update({
+              where: { id: inter.equipamentoId },
+              data: {
+                status: StatusEquipamento.DESINSTALADO_DEPOSITO,
+                ambienteId: null,
+                localizacao: 'Desinstalada / Depósito da Unidade (Aguardando destinação)',
+              },
+            });
+          } else if (inter.categoriaServico === 'INSTALACAO') {
+            // Máquina instalada passa a estar vinculada ao novo ambiente do chamado
             await tx.equipamento.update({
               where: { id: inter.equipamentoId },
               data: {
                 status: StatusEquipamento.ATIVO,
+                ambienteId: chamado.ambienteId || undefined,
+                localizacao: chamado.ambiente?.descricaoDetalhe || undefined,
                 emGarantiaAte: dataGarantiaFim,
                 ultimoChamadoId: chamado.id,
               },
             });
           } else {
+            // Manutenção (Corretiva/Preventiva): ativa equipamento e mantém ou vincula ambiente
             await tx.equipamento.update({
               where: { id: inter.equipamentoId },
               data: {
+                status: StatusEquipamento.ATIVO,
+                ambienteId: chamado.ambienteId || undefined,
+                emGarantiaAte: dataGarantiaFim,
+                ultimoChamadoId: chamado.id,
+              },
+            });
+          }
+
+          // Se houve máquina substituída (Fluxo de Substituição), desvincula a antiga
+          if (inter.maquinaSubstituidaId) {
+            await tx.equipamento.update({
+              where: { id: inter.maquinaSubstituidaId },
+              data: {
                 status: StatusEquipamento.DESINSTALADO_DEPOSITO,
+                ambienteId: null,
+                localizacao: 'Desinstalada / Depósito da Unidade (Substituída)',
               },
             });
           }

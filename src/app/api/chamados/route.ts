@@ -9,11 +9,15 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const unidadeId = searchParams.get('unidadeId');
     const status = searchParams.get('status');
+    const cidade = searchParams.get('cidade');
+    const apenasPrioritarios = searchParams.get('prioritario');
     const q = searchParams.get('q');
 
     const where: any = {};
-    if (unidadeId) where.unidadeId = unidadeId;
-    if (status) where.status = status as StatusChamado;
+    if (unidadeId && unidadeId !== 'TODOS') where.unidadeId = unidadeId;
+    if (status && status !== 'TODOS') where.status = status as StatusChamado;
+    if (cidade && cidade !== 'TODOS') where.unidade = { cidade };
+    if (apenasPrioritarios === 'true') where.isAmbientePrioritario = true;
     if (q) {
       where.OR = [
         { numeroProtocolo: { contains: q, mode: 'insensitive' } },
@@ -25,12 +29,14 @@ export async function GET(request: NextRequest) {
     const chamados = await prisma.chamado.findMany({
       where,
       include: {
-        unidade: { select: { id: true, sigla: true, nome: true, campus: true } },
+        unidade: { select: { id: true, sigla: true, nome: true, campus: true, cidade: true } },
+        ambiente: { select: { id: true, tipo: true, descricaoDetalhe: true, bloco: true } },
         demandante: { select: { id: true, nome: true, email: true, matricula: true } },
         empresa: { select: { id: true, razaoSocial: true, nomeFantasia: true, telefone: true } },
         intervencoes: {
           include: {
             equipamento: true,
+            tecnicoExecutor: true,
             itensOrcamento: {
               include: { itemPreco: true },
             },
@@ -90,6 +96,11 @@ export async function POST(request: NextRequest) {
       tituloDemanda,
       descricaoGeral,
       urgente, // boolean
+      // Ambiente da Unidade (Existente ou On-the-Fly):
+      ambienteId,
+      novoAmbienteTipo,
+      novoAmbienteDetalhe,
+      novoAmbienteBloco,
       // Modo de Intervenção:
       // tipoFluxo: 'SIMPLES' | 'SUBSTITUICAO'
       tipoFluxo,
@@ -175,6 +186,57 @@ export async function POST(request: NextRequest) {
 
     // 4. Criação atômica do Chamado, Intervenções e Timeline
     const novoChamado = await prisma.$transaction(async (tx) => {
+      // 4.1 Resolução de Ambiente da Unidade
+      let finalAmbienteId = ambienteId || null;
+      let finalTipoAmbiente: any = null;
+
+      if (novoAmbienteDetalhe?.trim() && novoAmbienteTipo) {
+        const ambUpsert = await tx.ambienteUnidade.upsert({
+          where: {
+            unidadeId_descricaoDetalhe: {
+              unidadeId,
+              descricaoDetalhe: novoAmbienteDetalhe.trim(),
+            },
+          },
+          update: {
+            tipo: novoAmbienteTipo,
+            bloco: novoAmbienteBloco?.trim() || null,
+            ativo: true,
+          },
+          create: {
+            unidadeId,
+            tipo: novoAmbienteTipo,
+            descricaoDetalhe: novoAmbienteDetalhe.trim(),
+            bloco: novoAmbienteBloco?.trim() || null,
+          },
+        });
+        finalAmbienteId = ambUpsert.id;
+        finalTipoAmbiente = ambUpsert.tipo;
+      } else if (finalAmbienteId) {
+        const ambExistente = await tx.ambienteUnidade.findUnique({
+          where: { id: finalAmbienteId },
+        });
+        if (ambExistente) {
+          finalTipoAmbiente = ambExistente.tipo;
+        }
+      } else {
+        // Se não informado explicitamente, herda automaticamente o ambiente vinculado à máquina
+        const alvoId = equipamentoId || maquinaAntigaId;
+        if (alvoId) {
+          const eqAlvo = await tx.equipamento.findUnique({
+            where: { id: alvoId },
+            include: { ambiente: true },
+          });
+          if (eqAlvo?.ambienteId && eqAlvo.ambiente) {
+            finalAmbienteId = eqAlvo.ambienteId;
+            finalTipoAmbiente = eqAlvo.ambiente.tipo;
+          }
+        }
+      }
+
+      const prioritarios = ['SALA_DE_AULA', 'LABORATORIO_PESQUISA_ININTERRUPTO', 'SALA_ESTUDOS_BIBLIOTECA'];
+      const isAmbientePrioritario = finalTipoAmbiente ? prioritarios.includes(finalTipoAmbiente) : false;
+
       const chamado = await tx.chamado.create({
         data: {
           numeroProtocolo,
@@ -182,14 +244,27 @@ export async function POST(request: NextRequest) {
           demandanteId,
           contratoId: contratoAtivo.id,
           empresaId: contratoAtivo.empresaId,
+          ambienteId: finalAmbienteId,
+          tipoAmbiente: finalTipoAmbiente,
+          isAmbientePrioritario,
           status: StatusChamado.ABERTO,
           percentualEvolucao: 15,
-          etapaAtualDescricao: 'Chamado Aberto - Aguardando Triagem pela Empresa',
+          etapaAtualDescricao: isAmbientePrioritario
+            ? '🚨 Aberto (Prioridade Alta: Sala de Aula / Lab Ininterrupto / Sala de Estudos)'
+            : 'Chamado Aberto - Aguardando Triagem pela Empresa',
           tituloDemanda: tituloDemanda.trim(),
           descricaoGeral: descricaoGeral?.trim() || '',
           prazoLimiteAtendimento,
         },
       });
+
+      // Vincula ambiente ao equipamento para manter o histórico
+      if (equipamentoId && finalAmbienteId) {
+        await tx.equipamento.update({
+          where: { id: equipamentoId },
+          data: { ambienteId: finalAmbienteId },
+        });
+      }
 
       // Cria intervenções
       if (tipoFluxo === 'SUBSTITUICAO') {

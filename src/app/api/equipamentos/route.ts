@@ -26,7 +26,8 @@ export async function GET(request: NextRequest) {
     const equipamentos = await prisma.equipamento.findMany({
       where,
       include: {
-        unidade: { select: { id: true, sigla: true, nome: true, campus: true } },
+        unidade: { select: { id: true, sigla: true, nome: true, campus: true, cidade: true } },
+        ambiente: { select: { id: true, tipo: true, descricaoDetalhe: true, bloco: true } },
         intervencoes: {
           where: { chamado: { status: { notIn: ['FINALIZADO', 'CANCELADO'] } } },
           select: {
@@ -58,6 +59,8 @@ export async function GET(request: NextRequest) {
         modelo: eq.modelo,
         localizacao: eq.localizacao,
         status: eq.status,
+        ambienteId: eq.ambienteId,
+        ambiente: eq.ambiente,
         btus: eq.btus,
         tipoAc: eq.tipoAc,
         gasRefrigerante: eq.gasRefrigerante,
@@ -92,6 +95,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       unidadeId,
+      ambienteId,
       tombo,
       tipo,
       marca,
@@ -113,40 +117,62 @@ export async function POST(request: NextRequest) {
       refrigeracaoEletronica,
     } = body;
 
-    if (!unidadeId || !tombo || !tipo || !marca || !localizacao) {
+    if (!unidadeId || !tombo || !tipo || !marca) {
       return NextResponse.json(
-        { error: 'Campos obrigatórios ausentes: Unidade, Tombo, Tipo, Marca e Localização.' },
+        { error: 'Campos obrigatórios ausentes: Unidade, Tombo, Tipo e Marca.' },
         { status: 400 }
       );
     }
 
     const tomboLimpo = tombo.trim();
 
-    // Verifica se já existe na mesma unidade
-    const existente = await prisma.equipamento.findUnique({
-      where: {
-        unidadeId_tombo: {
-          unidadeId,
-          tombo: tomboLimpo,
-        },
-      },
+    // 1. Bloqueio Estrito de Duplicidade de Tombo em todo o patrimônio da UERN
+    const existente = await prisma.equipamento.findFirst({
+      where: { tombo: tomboLimpo },
+      include: { unidade: true },
     });
 
     if (existente) {
       return NextResponse.json(
-        { error: `Equipamento com tombo ${tomboLimpo} já cadastrado no inventário desta unidade. Selecione-o na lista.` },
+        {
+          error: `Bloqueio de Duplicidade: Já existe um equipamento cadastrado com o tombo "${tomboLimpo}" na unidade ${existente.unidade.sigla}. O número de tombo patrimonial é único.`,
+        },
         { status: 409 }
       );
     }
 
+    // 2. Vínculo Obrigatório com Ambiente / Espaço Físico
+    if (!ambienteId) {
+      return NextResponse.json(
+        {
+          error: 'Vínculo Obrigatório: Toda máquina cadastrada deve ser necessariamente vinculada a um ambiente/espaço físico da unidade.',
+        },
+        { status: 400 }
+      );
+    }
+
+    const ambiente = await prisma.ambienteUnidade.findUnique({
+      where: { id: ambienteId },
+    });
+
+    if (!ambiente) {
+      return NextResponse.json(
+        { error: 'O ambiente/espaço físico selecionado não foi encontrado na base de dados.' },
+        { status: 404 }
+      );
+    }
+
+    const finalLocalizacao = localizacao?.trim() || ambiente.descricaoDetalhe;
+
     const novo = await prisma.equipamento.create({
       data: {
         unidadeId,
+        ambienteId,
         tombo: tomboLimpo,
         tipo: tipo as TipoEquipamento,
         marca: marca.trim(),
         modelo: modelo?.trim() || null,
-        localizacao: localizacao.trim(),
+        localizacao: finalLocalizacao,
         status: StatusEquipamento.ATIVO,
         btus: btus ? parseInt(btus, 10) : null,
         tipoAc: tipoAc || null,
@@ -159,12 +185,15 @@ export async function POST(request: NextRequest) {
         modeloGelagua: modeloGelagua ? (modeloGelagua as TipoModeloGelagua) : null,
         refrigeracaoEletronica: Boolean(refrigeracaoEletronica),
       },
-      include: { unidade: true },
+      include: {
+        unidade: true,
+        ambiente: true,
+      },
     });
 
     return NextResponse.json({
       success: true,
-      mensagem: 'Equipamento adicionado ao inventário da unidade com sucesso!',
+      mensagem: `Equipamento Tombo ${novo.tombo} adicionado com sucesso e vinculado ao ambiente "${ambiente.descricaoDetalhe}"!`,
       equipamento: novo,
     });
   } catch (error: any) {
@@ -220,3 +249,153 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const {
+      id,
+      equipamentoId,
+      unidadeId,
+      tombo,
+      tipo,
+      marca,
+      modelo,
+      localizacao,
+      status,
+      btus,
+      tipoAc,
+      gasRefrigerante,
+      tecnologiaInverter,
+      litragem,
+      tipoRefrigerador,
+      qtdTorneiras,
+      capacidadeLitros,
+      modeloGelagua,
+      refrigeracaoEletronica,
+      emGarantiaAte,
+    } = body;
+
+    const targetId = id || equipamentoId;
+    if (!targetId) {
+      return NextResponse.json({ error: 'ID do equipamento é obrigatório para atualização.' }, { status: 400 });
+    }
+
+    const tomboLimpo = tombo ? String(tombo).trim() : undefined;
+
+    // Se mudou o tombo ou unidade, checa duplicidade
+    if (tomboLimpo && unidadeId) {
+      const duplicado = await prisma.equipamento.findFirst({
+        where: {
+          id: { not: targetId },
+          unidadeId,
+          tombo: tomboLimpo,
+        },
+      });
+      if (duplicado) {
+        return NextResponse.json(
+          { error: `Já existe outro equipamento com tombo ${tomboLimpo} cadastrado nesta unidade.` },
+          { status: 409 }
+        );
+      }
+    }
+
+    const atualizado = await prisma.equipamento.update({
+      where: { id: targetId },
+      data: {
+        unidadeId: unidadeId || undefined,
+        tombo: tomboLimpo,
+        tipo: tipo ? (tipo as TipoEquipamento) : undefined,
+        marca: marca ? String(marca).trim() : undefined,
+        modelo: modelo !== undefined ? (modelo ? String(modelo).trim() : null) : undefined,
+        localizacao: localizacao ? String(localizacao).trim() : undefined,
+        status: status ? (status as StatusEquipamento) : undefined,
+        btus: btus !== undefined ? (btus ? parseInt(btus, 10) : null) : undefined,
+        tipoAc: tipoAc !== undefined ? tipoAc : undefined,
+        gasRefrigerante: gasRefrigerante !== undefined ? gasRefrigerante : undefined,
+        tecnologiaInverter: tecnologiaInverter !== undefined ? Boolean(tecnologiaInverter) : undefined,
+        litragem: litragem !== undefined ? (litragem ? parseInt(litragem, 10) : null) : undefined,
+        tipoRefrigerador: tipoRefrigerador !== undefined ? (tipoRefrigerador as TipoRefrigerador) : undefined,
+        qtdTorneiras: qtdTorneiras !== undefined ? (qtdTorneiras ? parseInt(qtdTorneiras, 10) : null) : undefined,
+        capacidadeLitros: capacidadeLitros !== undefined ? (capacidadeLitros ? parseInt(capacidadeLitros, 10) : null) : undefined,
+        modeloGelagua: modeloGelagua !== undefined ? (modeloGelagua as TipoModeloGelagua) : undefined,
+        refrigeracaoEletronica: refrigeracaoEletronica !== undefined ? Boolean(refrigeracaoEletronica) : undefined,
+        emGarantiaAte: emGarantiaAte ? new Date(emGarantiaAte) : undefined,
+      },
+      include: { unidade: true },
+    });
+
+    return NextResponse.json({
+      success: true,
+      mensagem: `Equipamento ${atualizado.tombo} atualizado com sucesso no inventário!`,
+      equipamento: atualizado,
+    });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    let id = searchParams.get('id');
+
+    if (!id) {
+      try {
+        const body = await request.json();
+        id = body?.id;
+      } catch (e) {}
+    }
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID do equipamento é obrigatório para exclusão.' }, { status: 400 });
+    }
+
+    const eq = await prisma.equipamento.findUnique({
+      where: { id },
+      include: {
+        intervencoes: {
+          include: {
+            chamado: { select: { id: true, numeroProtocolo: true, status: true } },
+          },
+        },
+      },
+    });
+
+    if (!eq) {
+      return NextResponse.json({ error: 'Equipamento não encontrado.' }, { status: 404 });
+    }
+
+    const chamadosAtivos = eq.intervencoes.filter(
+      (i) => i.chamado && !['FINALIZADO', 'CANCELADO'].includes(i.chamado.status)
+    );
+
+    if (chamadosAtivos.length > 0) {
+      return NextResponse.json(
+        {
+          error: `Não é possível excluir o equipamento ${eq.tombo} pois há o chamado ativo ${chamadosAtivos[0].chamado.numeroProtocolo} vinculado. Cancele ou finalize o chamado primeiro.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Se tiver intervenções passadas, desvincula ou remove para permitir a exclusão patrimonial pelo Admin
+    if (eq.intervencoes.length > 0) {
+      await prisma.intervencaoItem.deleteMany({
+        where: { equipamentoId: id },
+      });
+    }
+
+    await prisma.equipamento.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({
+      success: true,
+      mensagem: `Equipamento ${eq.tombo} (${eq.marca} ${eq.modelo || ''}) excluído com sucesso do inventário!`,
+    });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+

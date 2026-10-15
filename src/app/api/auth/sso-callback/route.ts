@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
     const roleUpper = (role || '').toUpperCase();
 
     let climaRole: RoleUsuario = RoleUsuario.DEMANDANTE;
-    if (roleUpper === 'ADMIN_PROAD' || roleUpper === 'ADMIN' || emailLimpo === 'adj.proad@uern.br') {
+    if (roleUpper === 'ADMIN_PROAD' || roleUpper === 'ADMIN' || emailLimpo === 'adj.proad@uern.br' || emailLimpo === 'pedroreboucas@uern.br') {
       climaRole = RoleUsuario.ADMIN;
     } else if (roleUpper === 'FISCAL_TECNICO') {
       climaRole = RoleUsuario.FISCAL_TECNICO;

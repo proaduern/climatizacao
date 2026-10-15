@@ -15,6 +15,7 @@ export async function syncContratoClimaFromSgc() {
 
   let sgcAlvo: any = null;
   let itensDb: any[] = [];
+  let responsaveisDb: any[] = [];
   let sourceMode = 'HTTP_API';
 
   // 1. Tenta sincronizar via API HTTP do SGC
@@ -56,10 +57,13 @@ export async function syncContratoClimaFromSgc() {
             cidade: it.cidade || `ITEM-${it.numeroItem}`,
           }));
         }
+
+        if (sgcAlvo?.responsaveis) {
+          responsaveisDb = sgcAlvo.responsaveis;
+        }
       }
     }
   } catch (err: any) {
-    // API HTTP offline ou demorando - faremos fallback no banco direto
     console.info('[SGC_SYNC] HTTP SGC indisponível, usando fallback de banco direto:', err?.message || err);
   }
 
@@ -99,6 +103,8 @@ export async function syncContratoClimaFromSgc() {
             telefone: raw.telefone || raw.telefonePreposto,
             email: raw.email || raw.emailPreposto,
             nomePreposto: raw.nomePreposto,
+            telefonePreposto: raw.telefonePreposto,
+            emailPreposto: raw.emailPreposto,
           },
         };
 
@@ -108,8 +114,16 @@ export async function syncContratoClimaFromSgc() {
           WHERE "contratoId" = ${sgcAlvo.id}
           ORDER BY "numeroItem" ASC
         `;
-
         itensDb = rawItens;
+
+        const rawResponsaveis: any[] = await prisma.$queryRaw`
+          SELECT r.id, r."tipoAtuacao", r."numeroAtoDesignacao", r."idSeiAtoDesignacao", r."campusSetor",
+                 u.nome, u.email, u.matricula, u.role
+          FROM public.contrato_responsaveis r
+          JOIN public.usuarios u ON r."userId" = u.id
+          WHERE r."contratoId" = ${sgcAlvo.id} AND r.ativo = true
+        `;
+        responsaveisDb = rawResponsaveis;
       }
     } catch (dbErr: any) {
       console.error('[SGC_SYNC_ERROR] Falha ao consultar contratos no banco público do SGC:', dbErr);
@@ -137,8 +151,8 @@ export async function syncContratoClimaFromSgc() {
     cnpj: cnpjFormatado,
     razaoSocial: sgcAlvo.fornecedor?.razaoSocial || 'L O DOS SANTOS ECOMSER',
     nomeFantasia: sgcAlvo.fornecedor?.nomeFantasia || 'L O DOS SANTOS ECOMSER',
-    telefone: sgcAlvo.fornecedor?.telefone || '(84) 921685387',
-    email: sgcAlvo.fornecedor?.email || 'ebenezerecomser@gmail.com',
+    telefone: sgcAlvo.fornecedor?.telefone || sgcAlvo.fornecedor?.telefonePreposto || '(84) 921685387',
+    email: sgcAlvo.fornecedor?.email || sgcAlvo.fornecedor?.emailPreposto || 'ebenezerecomser@gmail.com',
   };
 
   if (!empresa) {
@@ -150,31 +164,128 @@ export async function syncContratoClimaFromSgc() {
     });
   }
 
-  // 4. Cria ou atualiza usuário do Preposto da Empresa
+  // 4. Cria ou atualiza usuário do PREPOSTO DA EMPRESA (Puxado do SGC)
   const prepostoNome = sgcAlvo.fornecedor?.nomePreposto || 'Josemildo';
-  await prisma.usuario.upsert({
-    where: { email: 'ebenezerecomser@gmail.com' },
+  const prepostoEmail = sgcAlvo.fornecedor?.emailPreposto || sgcAlvo.fornecedor?.email || 'ebenezerecomser@gmail.com';
+
+  const prepostoUsuario = await prisma.usuario.upsert({
+    where: { email: prepostoEmail },
     update: {
       nome: `${prepostoNome} (Preposto • ${empresa.razaoSocial})`,
       empresaId: empresa.id,
       role: 'EMPRESA',
+      ativo: true,
     },
     create: {
       nome: `${prepostoNome} (Preposto • ${empresa.razaoSocial})`,
-      email: 'ebenezerecomser@gmail.com',
+      email: prepostoEmail,
       cpf: '630.343.690-01',
       role: 'EMPRESA',
       empresaId: empresa.id,
+      ativo: true,
     },
   });
 
-  // 5. Desativa contratos antigos para garantir unicidade do contrato ativo
+  // 5. Sincroniza a Equipe de Fiscalização do SGC (Fiscal Técnico, Gestor, Fiscal Adm)
+  let fiscalTecnicoPrincipal: any = null;
+  const equipeFiscalizacaoSgc: any[] = [];
+
+  for (const resp of responsaveisDb) {
+    equipeFiscalizacaoSgc.push({
+      tipoAtuacao: resp.tipoAtuacao,
+      nome: resp.nome,
+      email: resp.email,
+      matricula: resp.matricula,
+      atoDesignacao: resp.numeroAtoDesignacao,
+      idSei: resp.idSeiAtoDesignacao,
+      campusSetor: resp.campusSetor,
+    });
+
+    if (resp.tipoAtuacao === 'FISCAL_TECNICO') {
+      fiscalTecnicoPrincipal = resp;
+
+      // Upsert do Fiscal Técnico Real no clima_usuarios
+      await prisma.usuario.upsert({
+        where: { email: resp.email },
+        update: {
+          nome: resp.nome.trim(),
+          matricula: resp.matricula,
+          role: 'FISCAL_TECNICO',
+          ativo: true,
+        },
+        create: {
+          nome: resp.nome.trim(),
+          email: resp.email,
+          cpf: '139.447.000-01',
+          matricula: resp.matricula,
+          role: 'FISCAL_TECNICO',
+          ativo: true,
+        },
+      });
+    } else if (resp.tipoAtuacao === 'GESTOR') {
+      // Upsert do Gestor (Pedro Eloy) como ADMIN
+      await prisma.usuario.upsert({
+        where: { email: resp.email },
+        update: {
+          nome: resp.nome.trim(),
+          matricula: resp.matricula,
+          role: 'ADMIN',
+          ativo: true,
+        },
+        create: {
+          nome: resp.nome.trim(),
+          email: resp.email,
+          cpf: '127.574.000-01',
+          matricula: resp.matricula,
+          role: 'ADMIN',
+          ativo: true,
+        },
+      });
+    } else if (resp.tipoAtuacao === 'FISCAL_ADMINISTRATIVO') {
+      await prisma.usuario.upsert({
+        where: { email: resp.email },
+        update: {
+          nome: resp.nome.trim(),
+          matricula: resp.matricula,
+          role: 'FISCAL_ADM',
+          ativo: true,
+        },
+        create: {
+          nome: resp.nome.trim(),
+          email: resp.email,
+          cpf: '089.770.000-01',
+          matricula: resp.matricula,
+          role: 'FISCAL_ADM',
+          ativo: true,
+        },
+      });
+    }
+  }
+
+  // 6. Atualiza medições existentes para vincular o Fiscal Técnico Real
+  if (fiscalTecnicoPrincipal) {
+    const fiscalTecnicoDb = await prisma.usuario.findUnique({
+      where: { email: fiscalTecnicoPrincipal.email },
+    });
+
+    if (fiscalTecnicoDb) {
+      await prisma.medicaoMensal.updateMany({
+        data: {
+          fiscalTecnicoId: fiscalTecnicoDb.id,
+          nomeFiscalTecnico: fiscalTecnicoDb.nome,
+          matriculaFiscalTecnico: fiscalTecnicoDb.matricula,
+        },
+      });
+    }
+  }
+
+  // 7. Desativa contratos antigos para garantir unicidade do contrato ativo
   await prisma.contratoClima.updateMany({
     where: { numeroContrato: { not: sgcAlvo.numeroContrato } },
     data: { isReferenciaAtiva: false },
   });
 
-  // 6. Upsert do Contrato Vigente de Climatização (Ex: 11/2026)
+  // 8. Upsert do Contrato Vigente de Climatização (Ex: 11/2026)
   const valorGlobalFinal = Number(sgcAlvo.valorAtualizado || sgcAlvo.valorGlobal || 1166605.42);
 
   const contratoAtivo = await prisma.contratoClima.upsert({
@@ -210,7 +321,7 @@ export async function syncContratoClimaFromSgc() {
     include: { empresa: true, itensPreco: true },
   });
 
-  // 7. Sincroniza todos os itens de preços da planilha contratual
+  // 9. Sincroniza todos os itens de preços da planilha contratual
   if (itensDb && itensDb.length > 0) {
     for (const it of itensDb) {
       await prisma.itemContratoPreco.upsert({
@@ -242,7 +353,7 @@ export async function syncContratoClimaFromSgc() {
     }
   }
 
-  // 8. Re-vincula chamados abertos/em andamento para o contrato real
+  // 10. Re-vincula chamados abertos/em andamento para o contrato real
   await prisma.chamado.updateMany({
     where: { contratoId: { not: contratoAtivo.id } },
     data: {
@@ -270,5 +381,17 @@ export async function syncContratoClimaFromSgc() {
       totalItens,
       autoSincronizadoEm: contratoAtivo.autoSincronizadoEm,
     },
+    preposto: {
+      nome: prepostoNome,
+      email: prepostoEmail,
+      telefone: sgcAlvo.fornecedor?.telefonePreposto,
+    },
+    fiscalTecnico: fiscalTecnicoPrincipal ? {
+      nome: fiscalTecnicoPrincipal.nome,
+      email: fiscalTecnicoPrincipal.email,
+      matricula: fiscalTecnicoPrincipal.matricula,
+      campusSetor: fiscalTecnicoPrincipal.campusSetor,
+    } : null,
+    equipeFiscalizacao: equipeFiscalizacaoSgc,
   };
 }

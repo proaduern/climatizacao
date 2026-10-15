@@ -8,6 +8,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const mesAno = searchParams.get('mesAno') || `${String(new Date().getMonth() + 1).padStart(2, '0')}/${new Date().getFullYear()}`;
+    const cidade = searchParams.get('cidade');
 
     const contrato = await prisma.contratoClima.findFirst({
       where: { isReferenciaAtiva: true },
@@ -18,14 +19,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Nenhum contrato ativo localizado.' }, { status: 404 });
     }
 
+    const whereChamado: any = {
+      contratoId: contrato.id,
+      status: { in: [StatusChamado.FINALIZADO, StatusChamado.CONFIRMADO_TACITAMENTE] },
+    };
+    if (cidade && cidade !== 'TODOS') {
+      whereChamado.unidade = { cidade };
+    }
+
     // Busca todos os chamados finalizados ou confirmados tacitamente
     const chamados = await prisma.chamado.findMany({
-      where: {
-        contratoId: contrato.id,
-        status: { in: [StatusChamado.FINALIZADO, StatusChamado.CONFIRMADO_TACITAMENTE] },
-      },
+      where: whereChamado,
       include: {
         unidade: true,
+        ambiente: true,
         demandante: true,
         intervencoes: {
           include: {
@@ -42,12 +49,20 @@ export async function GET(request: NextRequest) {
 
     // Filtra intervenções concluídas para a listagem máquina por máquina
     const listaMaquinas: any[] = [];
+    const faturamentoPorCidade: { [cidade: string]: { total: number; count: number } } = {};
     let valorTotal = 0;
 
     for (const ch of chamados) {
+      const cid = ch.unidade.cidade || 'Mossoró';
+      if (!faturamentoPorCidade[cid]) {
+        faturamentoPorCidade[cid] = { total: 0, count: 0 };
+      }
+
       for (const it of ch.intervencoes) {
         const v = Number(it.valorTotalIntervencao || 0);
         valorTotal += v;
+        faturamentoPorCidade[cid].total += v;
+        faturamentoPorCidade[cid].count += 1;
 
         listaMaquinas.push({
           intervencaoId: it.id,
@@ -59,6 +74,10 @@ export async function GET(request: NextRequest) {
           btusOuCapacidade: it.equipamento.btus ? `${it.equipamento.btus} BTUs` : it.equipamento.litragem ? `${it.equipamento.litragem} L` : it.equipamento.qtdTorneiras ? `${it.equipamento.qtdTorneiras} torneiras` : 'N/A',
           unidadeSigla: ch.unidade.sigla,
           unidadeNome: ch.unidade.nome,
+          cidade: cid,
+          ambienteNome: ch.ambiente?.descricaoDetalhe || it.equipamento.localizacao,
+          tipoAmbiente: ch.tipoAmbiente || ch.ambiente?.tipo || 'SALA_ADMINISTRATIVA',
+          isPrioritario: ch.isAmbientePrioritario,
           localizacao: it.equipamento.localizacao,
           categoriaServico: it.categoriaServico,
           descricaoServico: it.itensOrcamento.map((o) => `${o.itemPreco.descricao} (qtd: ${o.quantidade})`).join(', ') || it.descricaoDefeito || 'Reparo e revisão',
@@ -84,6 +103,8 @@ export async function GET(request: NextRequest) {
       include: { fiscalTecnico: true },
     });
 
+    const cidadesDisponiveis = Array.from(new Set(Object.keys(faturamentoPorCidade)));
+
     return NextResponse.json({
       mesAno,
       contrato: {
@@ -99,6 +120,9 @@ export async function GET(request: NextRequest) {
         totalMaquinas: listaMaquinas.length,
         valorTotalMedido: valorTotal,
       },
+      faturamentoPorCidade,
+      cidadesDisponiveis,
+      cidadeFiltro: cidade || 'TODOS',
       statusMedicao: medicao?.status || StatusMedicaoMensal.EM_ABERTO,
       processoSeiDespesa: medicao?.processoSeiDespesa || contrato.processoSeiMae,
       dataRecebimentoProvisorio: medicao?.dataRecebimentoProvisorio,

@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
       },
       include: {
         contrato: true,
+        ambiente: true,
         intervencoes: true,
       },
     });
@@ -41,13 +42,45 @@ export async function POST(request: NextRequest) {
             },
           });
 
-          if (inter.categoriaServico !== 'DESINSTALACAO') {
+          if (inter.categoriaServico === 'DESINSTALACAO') {
+            await tx.equipamento.update({
+              where: { id: inter.equipamentoId },
+              data: {
+                status: StatusEquipamento.DESINSTALADO_DEPOSITO,
+                ambienteId: null,
+                localizacao: 'Desinstalada / Depósito da Unidade (Aguardando destinação)',
+              },
+            });
+          } else if (inter.categoriaServico === 'INSTALACAO') {
             await tx.equipamento.update({
               where: { id: inter.equipamentoId },
               data: {
                 status: StatusEquipamento.ATIVO,
+                ambienteId: chamado.ambienteId || undefined,
+                localizacao: chamado.ambiente?.descricaoDetalhe || undefined,
                 emGarantiaAte: dataGarantiaFim,
                 ultimoChamadoId: chamado.id,
+              },
+            });
+          } else {
+            await tx.equipamento.update({
+              where: { id: inter.equipamentoId },
+              data: {
+                status: StatusEquipamento.ATIVO,
+                ambienteId: chamado.ambienteId || undefined,
+                emGarantiaAte: dataGarantiaFim,
+                ultimoChamadoId: chamado.id,
+              },
+            });
+          }
+
+          if (inter.maquinaSubstituidaId) {
+            await tx.equipamento.update({
+              where: { id: inter.maquinaSubstituidaId },
+              data: {
+                status: StatusEquipamento.DESINSTALADO_DEPOSITO,
+                ambienteId: null,
+                localizacao: 'Desinstalada / Depósito da Unidade (Substituída)',
               },
             });
           }

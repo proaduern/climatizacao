@@ -92,6 +92,7 @@ export async function GET(request: NextRequest) {
         prazoAtendimentoHorasUrgente: contrato.prazoAtendimentoHorasUrgente,
         diasGarantiaPadrao: contrato.diasGarantiaPadrao,
         diasPrazoAtesteDemandante: contrato.diasPrazoAtesteDemandante,
+        limiteAprovacaoAutomatica: Number(contrato.limiteAprovacaoAutomatica || 1000),
         itensPreco: contrato.itensPreco.map((item) => ({
           id: item.id,
           numeroItem: item.numeroItem,
@@ -129,6 +130,7 @@ export async function PUT(request: NextRequest) {
       prazoAtendimentoHorasUrgente,
       diasGarantiaPadrao,
       diasPrazoAtesteDemandante,
+      limiteAprovacaoAutomatica,
     } = body;
 
     if (!contratoId) {
@@ -138,10 +140,11 @@ export async function PUT(request: NextRequest) {
     const contratoAtualizado = await prisma.contratoClima.update({
       where: { id: contratoId },
       data: {
-        prazoAtendimentoHorasRegular: prazoAtendimentoHorasRegular ? parseInt(prazoAtendimentoHorasRegular, 10) : undefined,
-        prazoAtendimentoHorasUrgente: prazoAtendimentoHorasUrgente ? parseInt(prazoAtendimentoHorasUrgente, 10) : undefined,
-        diasGarantiaPadrao: diasGarantiaPadrao ? parseInt(diasGarantiaPadrao, 10) : undefined,
-        diasPrazoAtesteDemandante: diasPrazoAtesteDemandante ? parseInt(diasPrazoAtesteDemandante, 10) : undefined,
+        prazoAtendimentoHorasRegular: prazoAtendimentoHorasRegular !== undefined ? parseInt(prazoAtendimentoHorasRegular, 10) : undefined,
+        prazoAtendimentoHorasUrgente: prazoAtendimentoHorasUrgente !== undefined ? parseInt(prazoAtendimentoHorasUrgente, 10) : undefined,
+        diasGarantiaPadrao: diasGarantiaPadrao !== undefined ? parseInt(diasGarantiaPadrao, 10) : undefined,
+        diasPrazoAtesteDemandante: diasPrazoAtesteDemandante !== undefined ? parseInt(diasPrazoAtesteDemandante, 10) : undefined,
+        limiteAprovacaoAutomatica: limiteAprovacaoAutomatica !== undefined ? parseFloat(limiteAprovacaoAutomatica) : undefined,
       },
     });
 

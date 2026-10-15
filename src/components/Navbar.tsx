@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Snowflake,
   ShieldCheck,
@@ -12,24 +12,64 @@ import {
   RefreshCw,
   LogOut,
   Sparkles,
+  Users,
 } from 'lucide-react';
 
 interface NavbarProps {
   currentUser: any;
   onRoleSwitched: () => void;
+  activeTab?: string;
+  onTabChange?: (tab: any) => void;
 }
 
-export default function Navbar({ currentUser, onRoleSwitched }: NavbarProps) {
+export default function Navbar({ currentUser, onRoleSwitched, activeTab, onTabChange }: NavbarProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [tecnicosCadastrados, setTecnicosCadastrados] = useState<any[]>([]);
 
-  const personas = [
+  // Carrega técnicos da empresa cadastrados pelo Admin
+  useEffect(() => {
+    fetch('/api/usuarios?role=EMPRESA')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.usuarios) {
+          // Filtra técnicos excluindo o preposto
+          const tecs = data.usuarios.filter((u: any) => !u.nome.toLowerCase().includes('preposto'));
+          setTecnicosCadastrados(tecs);
+        }
+      })
+      .catch(() => {});
+  }, [dropdownOpen]);
+
+  // Personas Oficiais com dados reais sincronizados do SGC
+  const basePersonas = [
     {
       role: 'ADMIN',
-      nome: 'Prof. Dr. Fernando Santos',
-      email: 'fernando.admin@uern.br',
-      cargo: 'Gestor PROAD / Infraestrutura',
+      nome: 'Pedro Eloy de Paiva Farias',
+      email: 'pedroeloy@uern.br',
+      cargo: 'Gestor do Contrato • PROAD / SGC',
       badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+    },
+    {
+      role: 'ADMIN',
+      nome: 'PROAD Infraestrutura',
+      email: 'fernando.admin@uern.br',
+      cargo: 'Administrador do Sistema',
+      badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+    },
+    {
+      role: 'FISCAL_TECNICO',
+      nome: 'José Luiz de Melo Júnior',
+      email: 'joseluiz@uern.br',
+      cargo: 'Fiscal Técnico (Contrato 11/2026 • SGC)',
+      badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+    },
+    {
+      role: 'EMPRESA',
+      nome: 'Josemildo (Preposto)',
+      email: 'ebenezerecomser@gmail.com',
+      cargo: 'Preposto SGC • L O DOS SANTOS ECOMSER',
+      badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
     },
     {
       role: 'DEMANDANTE',
@@ -45,27 +85,18 @@ export default function Navbar({ currentUser, onRoleSwitched }: NavbarProps) {
       cargo: 'Demandante • Gabinete PROAD',
       badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
     },
-    {
+  ];
+
+  // Adiciona técnicos da empresa cadastrados pelo admin
+  const dynamicPersonas = [
+    ...basePersonas,
+    ...tecnicosCadastrados.map((tec) => ({
       role: 'EMPRESA',
-      nome: 'Josemildo (Preposto)',
-      email: 'ebenezerecomser@gmail.com',
-      cargo: 'Preposto • L O DOS SANTOS ECOMSER',
-      badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-    },
-    {
-      role: 'EMPRESA',
-      nome: 'Carlos Lima',
-      email: 'carlos.tecnico@climafrio.com.br',
-      cargo: 'Técnico de Campo • L O DOS SANTOS',
-      badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-    },
-    {
-      role: 'FISCAL_TECNICO',
-      nome: 'Eng. Roberto Silva',
-      email: 'fiscal.tecnico@uern.br',
-      cargo: 'Fiscal Técnico do Contrato',
-      badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-    },
+      nome: `${tec.nome} (Técnico)`,
+      email: tec.email,
+      cargo: `Técnico de Campo (CPF: ${tec.cpf || 'Cadastrado'})`,
+      badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+    })),
   ];
 
   const handleSwitchPersona = async (email: string) => {
@@ -99,7 +130,7 @@ export default function Navbar({ currentUser, onRoleSwitched }: NavbarProps) {
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-amber-400">UERN • PROAD</span>
               <span className="text-[10px] bg-cyan-500/10 text-cyan-300 px-2 py-0.5 rounded-full border border-cyan-500/30 font-semibold flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-cyan-400" /> SIG-CLIMA (Porta 3005)
+                <Sparkles className="w-3 h-3 text-cyan-400" /> SIG-CLIMA
               </span>
             </div>
             <h1 className="text-sm font-bold text-white tracking-tight flex items-center gap-1.5">
@@ -116,7 +147,7 @@ export default function Navbar({ currentUser, onRoleSwitched }: NavbarProps) {
               type="button"
               onClick={() => setDropdownOpen(!dropdownOpen)}
               className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-white/15 text-xs text-slate-200 transition shadow-sm"
-              title="Trocar perfil para testes"
+              title="Trocar perfil de acesso"
             >
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
               <div className="text-left hidden sm:block">
@@ -124,22 +155,24 @@ export default function Navbar({ currentUser, onRoleSwitched }: NavbarProps) {
                 <div className="text-[10px] text-slate-400">
                   {currentUser?.role === 'ADMIN' && '👑 Admin PROAD'}
                   {currentUser?.role === 'DEMANDANTE' && `🏛️ ${currentUser?.unidadeSigla || 'Unidade'}`}
-                  {currentUser?.role === 'EMPRESA' && (currentUser?.empresaRazaoSocial ? `🛠️ ${currentUser.empresaRazaoSocial}` : '🛠️ L O DOS SANTOS Prestadora')}
-                  {currentUser?.role === 'FISCAL_TECNICO' && '📐 Fiscal Técnico'}
+                  {currentUser?.role === 'EMPRESA' && (currentUser?.empresaRazaoSocial ? `🛠️ ${currentUser.empresaRazaoSocial}` : '🛠️ L O DOS SANTOS')}
+                  {currentUser?.role === 'FISCAL_TECNICO' && '📐 Fiscal Técnico (SGC)'}
+                  {currentUser?.role === 'FISCAL_ADM' && '📋 Fiscal Adm (SGC)'}
+                  {currentUser?.role === 'GESTOR_CONTRATO' && '🏛️ Gestor Contrato (SGC)'}
                 </div>
               </div>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
             </button>
 
             {dropdownOpen && (
-              <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-slate-900 border border-white/15 shadow-2xl p-2 z-50 text-xs animate-in fade-in zoom-in-95">
+              <div className="absolute right-0 mt-2 w-80 max-h-[80vh] overflow-y-auto rounded-2xl bg-slate-900 border border-white/15 shadow-2xl p-2 z-50 text-xs animate-in fade-in zoom-in-95">
                 <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-white/10 mb-1 flex items-center justify-between">
                   <span>Simular Perfil de Acesso</span>
                   {switching && <RefreshCw className="w-3 h-3 animate-spin text-cyan-400" />}
                 </div>
 
                 <div className="space-y-1">
-                  {personas.map((p) => {
+                  {dynamicPersonas.map((p) => {
                     const isSelected = currentUser?.email === p.email;
                     return (
                       <button
@@ -154,12 +187,12 @@ export default function Navbar({ currentUser, onRoleSwitched }: NavbarProps) {
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="font-bold text-white">{p.nome}</span>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold ${p.badgeColor}`}>
+                          <span className="font-bold text-white truncate max-w-[180px]">{p.nome}</span>
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold ${p.badgeColor}`}>
                             {p.role}
                           </span>
                         </div>
-                        <span className="text-[11px] text-slate-400">{p.cargo}</span>
+                        <span className="text-[11px] text-slate-400 truncate">{p.cargo}</span>
                       </button>
                     );
                   })}
