@@ -141,7 +141,9 @@ export async function GET(request: NextRequest) {
       empresaId: usuarioDb.empresaId,
     });
 
-    const response = NextResponse.redirect(new URL('/', request.url));
+    const isTreino = searchParams.get('treinamento') === '1';
+    const redirectTarget = isTreino ? '/?treinamento=1' : '/';
+    const response = NextResponse.redirect(new URL(redirectTarget, request.url));
     response.cookies.set(COOKIE_NAME, sessionToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

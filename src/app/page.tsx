@@ -338,7 +338,14 @@ export default function HomePage() {
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
-        setChamados(data.chamados || []);
+        const list = data.chamados || [];
+        setChamados(list);
+        if (typeof window !== 'undefined') {
+          const p = new URLSearchParams(window.location.search);
+          if (p.get('detalhe') && list.length > 0) {
+            abrirDetalheChamado(list[0].id);
+          }
+        }
       }
     } finally {
       setLoadingChamados(false);
@@ -462,6 +469,13 @@ export default function HomePage() {
     carregarUsuario();
     carregarContrato();
     carregarUnidades();
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      const tabParam = p.get('tab');
+      if (tabParam && ['chamados', 'novo', 'ambientes', 'inventario', 'faturamento', 'usuarios', 'parametros'].includes(tabParam)) {
+        setActiveTab(tabParam as any);
+      }
+    }
   }, []);
 
   useEffect(() => {
