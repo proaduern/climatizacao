@@ -101,14 +101,24 @@ export async function GET(request: NextRequest) {
       empresaId = emp.id;
     }
 
-    // 2. Localiza ou cria Usuário no SIG-CLIMA
+    // 2. Localiza ou cria Usuário no SIG-CLIMA (por e-mail, matrícula ou CPF para evitar duplicidade)
+    const cpfPayload = (payload as any).cpf as string | undefined;
     let usuarioDb = await prisma.usuario.findUnique({ where: { email: emailLimpo } });
+    if (!usuarioDb && (matricula || cpfPayload)) {
+      const orConditions: any[] = [];
+      if (matricula) orConditions.push({ matricula });
+      if (cpfPayload && cpfPayload !== '000.000.000-00') orConditions.push({ cpf: cpfPayload });
+      if (orConditions.length > 0) {
+        usuarioDb = await prisma.usuario.findFirst({ where: { OR: orConditions } });
+      }
+    }
+
     if (!usuarioDb) {
       usuarioDb = await prisma.usuario.create({
         data: {
           nome: nome || emailLimpo.split('@')[0],
           email: emailLimpo,
-          cpf: (payload as any).cpf || '000.000.000-00',
+          cpf: cpfPayload || '000.000.000-00',
           matricula: matricula || null,
           role: climaRole,
           unidadeId,
@@ -120,6 +130,8 @@ export async function GET(request: NextRequest) {
         where: { id: usuarioDb.id },
         data: {
           nome: nome || usuarioDb.nome,
+          email: emailLimpo,
+          cpf: cpfPayload && cpfPayload !== '000.000.000-00' ? cpfPayload : usuarioDb.cpf,
           matricula: matricula || usuarioDb.matricula,
           role: climaRole,
           unidadeId: unidadeId || usuarioDb.unidadeId,
