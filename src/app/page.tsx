@@ -39,6 +39,8 @@ import {
   AlertTriangle,
   Download,
   MapPin,
+  Send,
+  Share2,
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -201,6 +203,26 @@ export default function HomePage() {
 
   const [modalRejeicao, setModalRejeicao] = useState(false);
   const [motivoRejeicao, setMotivoRejeicao] = useState('');
+
+  // Estados para o Fluxo Oficial de Laudo e Parecer da SOBE (Conforme Fluxograma)
+  const [modalLaudoEmpresa, setModalLaudoEmpresa] = useState(false);
+  const [laudoEmpresaTexto, setLaudoEmpresaTexto] = useState('');
+  const [laudoEmpresaMotivo, setLaudoEmpresaMotivo] = useState('ALTA_COMPLEXIDADE');
+  const [laudoEmpresaCusto, setLaudoEmpresaCusto] = useState('');
+  const [laudoEmpresaTecnico, setLaudoEmpresaTecnico] = useState('');
+
+  const [modalDespachoSobe, setModalDespachoSobe] = useState(false);
+  const [despachoSobeDuvida, setDespachoSobeDuvida] = useState('');
+
+  const [modalParecerSobe, setModalParecerSobe] = useState(false);
+  const [parecerSobeTexto, setParecerSobeTexto] = useState('');
+  const [parecerSobeFavoravel, setParecerSobeFavoravel] = useState(true);
+  const [parecerSobeEngenheiro, setParecerSobeEngenheiro] = useState('');
+  const [parecerSobeMatricula, setParecerSobeMatricula] = useState('');
+
+  const [modalReprovarLaudo, setModalReprovarLaudo] = useState(false);
+  const [reprovarLaudoMotivo, setReprovarLaudoMotivo] = useState('');
+  const [salvandoLaudoAcao, setSalvandoLaudoAcao] = useState(false);
 
   // Estados de Abertura de Novo Chamado
   const [tipoFluxo, setTipoFluxo] = useState<'SIMPLES' | 'SUBSTITUICAO'>('SIMPLES');
@@ -1344,6 +1366,250 @@ export default function HomePage() {
     doc.save(`Laudo_Tecnico_Condenacao_Tombo_${eq?.tombo || 'MAQUINA'}_${chamado.numeroProtocolo}.pdf`);
   };
 
+  // ==============================================================
+  // ROTINAS DO FLUXO OFICIAL: AUTORIZAÇÃO, LAUDO E PARECER DA SOBE
+  // ==============================================================
+
+  // Passo 2: Fiscal Autoriza Chamado para a Contratada
+  const handleAutorizarChamado = async (chId: string) => {
+    try {
+      setSalvandoLaudoAcao(true);
+      const res = await fetch(`/api/chamados/${chId}/laudo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          acao: 'AUTORIZAR_CHAMADO',
+          fiscalNome: currentUser?.nome || 'Fiscal Técnico UERN',
+        }),
+      });
+
+      if (res.ok) {
+        alert('Chamado autorizado com sucesso pela Fiscalização e encaminhado para a Contratada!');
+        if (chamadoDetalhe?.id === chId) abrirDetalheChamado(chId);
+        carregarChamados();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Erro ao autorizar chamado.');
+      }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSalvandoLaudoAcao(false);
+    }
+  };
+
+  // Passo 4: Contratada Inicia Execução Direta (Sem necessidade de aprovação)
+  const handleExecutarDireto = async (chId: string) => {
+    try {
+      setSalvandoLaudoAcao(true);
+      const res = await fetch(`/api/chamados/${chId}/laudo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          acao: 'EXECUTAR_DIRETO',
+          tecnicoNome: currentUser?.nome || 'Empresa Prestadora',
+        }),
+      });
+
+      if (res.ok) {
+        alert('Execução direta iniciada com sucesso pela Contratada!');
+        if (chamadoDetalhe?.id === chId) abrirDetalheChamado(chId);
+        carregarChamados();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Erro ao iniciar execução direta.');
+      }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSalvandoLaudoAcao(false);
+    }
+  };
+
+  // Passos 4 e 6: Contratada Elabora e Submete Laudo Técnico Preliminar
+  const handleSubmeterLaudoEmpresa = async () => {
+    if (!chamadoDetalhe) return;
+    if (!laudoEmpresaTexto.trim()) {
+      alert('Informe o laudo técnico preliminar com o diagnóstico do equipamento.');
+      return;
+    }
+
+    try {
+      setSalvandoLaudoAcao(true);
+      const res = await fetch(`/api/chamados/${chamadoDetalhe.id}/laudo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          acao: 'SUBMETER_LAUDO',
+          motivoRequerAprovacao: laudoEmpresaMotivo,
+          laudoTexto: laudoEmpresaTexto,
+          custoEstimado: laudoEmpresaCusto,
+          tecnicoNome: laudoEmpresaTecnico || currentUser?.nome || 'Técnico da Contratada',
+        }),
+      });
+
+      if (res.ok) {
+        alert('Laudo técnico enviado com sucesso para análise da Fiscalização Técnica!');
+        setModalLaudoEmpresa(false);
+        setLaudoEmpresaTexto('');
+        setLaudoEmpresaCusto('');
+        abrirDetalheChamado(chamadoDetalhe.id);
+        carregarChamados();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Erro ao submeter laudo técnico.');
+      }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSalvandoLaudoAcao(false);
+    }
+  };
+
+  // Passo 8 (Sim): Fiscal Aprova Laudo e Libera Execução (Passo 5)
+  const handleAprovarLaudoFiscal = async () => {
+    if (!chamadoDetalhe) return;
+    if (!confirm('Deseja aprovar o laudo técnico e autorizar a execução do serviço pela contratada?')) return;
+
+    try {
+      setSalvandoLaudoAcao(true);
+      const res = await fetch(`/api/chamados/${chamadoDetalhe.id}/laudo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          acao: 'APROVAR_LAUDO',
+          fiscalNome: currentUser?.nome || 'Fiscal Técnico UERN',
+        }),
+      });
+
+      if (res.ok) {
+        alert('Laudo técnico aprovado com sucesso! Execução liberada para a Contratada.');
+        abrirDetalheChamado(chamadoDetalhe.id);
+        carregarChamados();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Erro ao aprovar laudo.');
+      }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSalvandoLaudoAcao(false);
+    }
+  };
+
+  // Passo 8 (Não): Fiscal Reprova Laudo e Encerra Chamado (Passo 10)
+  const handleReprovarLaudoFiscal = async () => {
+    if (!chamadoDetalhe) return;
+    if (!reprovarLaudoMotivo.trim()) {
+      alert('Informe a justificativa técnica para a reprovação do laudo.');
+      return;
+    }
+
+    try {
+      setSalvandoLaudoAcao(true);
+      const res = await fetch(`/api/chamados/${chamadoDetalhe.id}/laudo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          acao: 'REJEITAR_LAUDO',
+          fiscalNome: currentUser?.nome || 'Fiscal Técnico UERN',
+          motivoRejeicao: reprovarLaudoMotivo,
+        }),
+      });
+
+      if (res.ok) {
+        alert('Laudo reprovado e chamado encerrado pela fiscalização com sucesso.');
+        setModalReprovarLaudo(false);
+        setReprovarLaudoMotivo('');
+        abrirDetalheChamado(chamadoDetalhe.id);
+        carregarChamados();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Erro ao reprovar laudo.');
+      }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSalvandoLaudoAcao(false);
+    }
+  };
+
+  // Passo 8 (Dúvida -> Passo 9): Fiscal Despacha para Engenharia (SOBE)
+  const handleDespacharSobe = async () => {
+    if (!chamadoDetalhe) return;
+    if (!despachoSobeDuvida.trim()) {
+      alert('Informe os quesitos ou a dúvida técnica para a Superintendência de Obras e Engenharia.');
+      return;
+    }
+
+    try {
+      setSalvandoLaudoAcao(true);
+      const res = await fetch(`/api/chamados/${chamadoDetalhe.id}/laudo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          acao: 'DESPACHAR_SOBE',
+          fiscalNome: currentUser?.nome || 'Fiscal Técnico UERN',
+          duvidaEngenharia: despachoSobeDuvida,
+        }),
+      });
+
+      if (res.ok) {
+        alert('Chamado despachado com sucesso para parecer da Superintendência de Obras e Engenharia (SOBE)!');
+        setModalDespachoSobe(false);
+        setDespachoSobeDuvida('');
+        abrirDetalheChamado(chamadoDetalhe.id);
+        carregarChamados();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Erro ao despachar para a Engenharia.');
+      }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSalvandoLaudoAcao(false);
+    }
+  };
+
+  // Passos 11 e 12: Engenharia SOBE Elabora e Encaminha Parecer de Volta ao Fiscal
+  const handleEmitirParecerSobe = async () => {
+    if (!chamadoDetalhe) return;
+    if (!parecerSobeTexto.trim()) {
+      alert('Informe a fundamentação técnica e o teor do parecer da SOBE.');
+      return;
+    }
+
+    try {
+      setSalvandoLaudoAcao(true);
+      const res = await fetch(`/api/chamados/${chamadoDetalhe.id}/laudo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          acao: 'EMITIR_PARECER_SOBE',
+          parecerTexto: parecerSobeTexto,
+          parecerFavoravel: parecerSobeFavoravel,
+          engenheiroNome: parecerSobeEngenheiro || currentUser?.nome || 'Engenheiro SOBE',
+          engenheiroMatricula: parecerSobeMatricula || currentUser?.matricula || '',
+        }),
+      });
+
+      if (res.ok) {
+        alert('Parecer da SOBE emitido e encaminhado com sucesso de volta para a Fiscalização Técnica!');
+        setModalParecerSobe(false);
+        setParecerSobeTexto('');
+        abrirDetalheChamado(chamadoDetalhe.id);
+        carregarChamados();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Erro ao emitir parecer da SOBE.');
+      }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSalvandoLaudoAcao(false);
+    }
+  };
+
   // Aprovação/Rejeição de Orçamento pelo Admin
   const handleAprovarOrcamento = async (acao: 'APROVAR' | 'REJEITAR') => {
     if (!chamadoDetalhe) return;
@@ -1976,9 +2242,12 @@ export default function HomePage() {
                 >
                   <option value="TODOS">Todos os Status</option>
                   <option value="ABERTO">Aberto / Em Triagem</option>
-                  <option value="ORCAMENTO_ANEXADO">Aguardando Aprovação Orçamento</option>
+                  <option value="AGUARDANDO_ANALISE_LAUDO">Laudo em Análise (Fiscal Técnico)</option>
+                  <option value="ENCAMINHADO_ENGENHARIA">Encaminhado para Engenharia (SOBE)</option>
+                  <option value="PARECER_ENGENHARIA_EMITIDO">Parecer SOBE Emitido</option>
                   <option value="APROVADO_EM_EXECUCAO">Em Execução</option>
                   <option value="AGUARDANDO_CONFIRMACAO">Aguardando Ateste do Demandante</option>
+                  <option value="ORCAMENTO_ANEXADO">Aguardando Aprovação Orçamento SGC</option>
                   <option value="FINALIZADO">Finalizado</option>
                 </select>
 
@@ -2093,10 +2362,10 @@ export default function HomePage() {
 
                     <div className="flex justify-between text-[10px] text-slate-500 pt-1">
                       <span>1. Abertura</span>
-                      <span>2. Diagnóstico/Orçamento</span>
-                      <span>3. Execução</span>
-                      <span>4. Ateste Demandante</span>
-                      <span>5. Conclusão</span>
+                      <span>2. Triagem / Laudo</span>
+                      <span>3. Parecer SOBE / Aprovação</span>
+                      <span>4. Execução</span>
+                      <span>5. Ateste / Fechamento</span>
                     </div>
                   </div>
 
@@ -3470,16 +3739,16 @@ export default function HomePage() {
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
-                      <Zap className="w-3 h-3 text-amber-400" /> Regra de Alçada Parametrizada
+                      <Zap className="w-3 h-3 text-amber-400" /> Parâmetro Configurável de Manutenção Cara / Complexa
                     </span>
-                    <span className="text-xs text-slate-400">Configuração Exclusiva do Administrador</span>
+                    <span className="text-xs text-slate-400">Configuração Oficial da Fiscalização / Gestor PROAD</span>
                   </div>
                   <h4 className="text-base font-black text-white flex items-center gap-2">
                     <Sliders className="w-5 h-5 text-amber-400" />
-                    <span>Limite de Aprovação Automática de Orçamentos</span>
+                    <span>Teto de Manutenção Simples / Limite para Execução Direta (sem Laudo Prévio)</span>
                   </h4>
                   <p className="text-xs text-slate-300 mt-1 max-w-2xl">
-                    Define o valor máximo em que o orçamento da empresa contratada é aprovado imediatamente pelo sistema. Acima deste teto, o orçamento é retido para análise e autorização formal da <strong>Fiscalização Administrativa</strong> ou do <strong>Gestor do Contrato da UERN</strong>.
+                    Define o teto de corte para execução direta sem laudo. Quando o custo estimado da manutenção for superior a este valor (ou apresentar alta complexidade técnica), a empresa prestadora deve obrigatoriamente submeter <strong>Laudo Técnico Preliminar</strong> para análise da <strong>Fiscalização Técnica</strong>, que pode autorizar, reprovar ou solicitar parecer técnico à <strong>Superintendência de Obras e Engenharia (SOBE)</strong>.
                   </p>
                 </div>
 
@@ -4390,6 +4659,144 @@ export default function HomePage() {
               </div>
             </div>
 
+            {/* PAINEL DE LAUDO TÉCNICO INICIAL & PARECER DA ENGENHARIA (SOBE) */}
+            {(chamadoDetalhe.requerAprovacaoPrevia ||
+              chamadoDetalhe.laudoInicialEmpresa ||
+              chamadoDetalhe.despachoSobeMotivo ||
+              chamadoDetalhe.parecerSobeTexto ||
+              ['AGUARDANDO_ANALISE_LAUDO', 'ENCAMINHADO_ENGENHARIA', 'PARECER_ENGENHARIA_EMITIDO'].includes(chamadoDetalhe.status)) && (
+              <div className="p-4 rounded-xl bg-slate-900/90 border border-amber-500/30 space-y-3.5 shadow-md">
+                <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                    <FileText className="w-4 h-4 text-amber-400" />
+                    <span>Processo de Análise Técnica: Laudo Preliminar & Parecer SOBE</span>
+                  </h4>
+                  {chamadoDetalhe.status === 'AGUARDANDO_ANALISE_LAUDO' && (
+                    <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
+                      Aguardando Decisão do Fiscal
+                    </span>
+                  )}
+                  {chamadoDetalhe.status === 'ENCAMINHADO_ENGENHARIA' && (
+                    <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40 font-bold animate-pulse">
+                      Em Análise na Engenharia (SOBE)
+                    </span>
+                  )}
+                  {chamadoDetalhe.status === 'PARECER_ENGENHARIA_EMITIDO' && (
+                    <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">
+                      Parecer SOBE Emitido
+                    </span>
+                  )}
+                </div>
+
+                {/* 1. Laudo da Empresa */}
+                {chamadoDetalhe.laudoInicialEmpresa && (
+                  <div className="p-3 rounded-lg bg-slate-950 border border-white/10 text-xs space-y-1.5">
+                    <div className="flex justify-between items-center text-slate-300">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white">📋 Laudo Técnico da Contratada</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 font-semibold">
+                          {chamadoDetalhe.motivoRequerAprovacao === 'CUSTO_ELEVADO'
+                            ? '💰 Custo Elevado (> Limite Contratual)'
+                            : chamadoDetalhe.motivoRequerAprovacao === 'ALTA_COMPLEXIDADE'
+                            ? '⚙️ Alta Complexidade Técnica'
+                            : chamadoDetalhe.motivoRequerAprovacao === 'INFRAESTRUTURA'
+                            ? '🏗️ Intervenção Estrutural/Elétrica'
+                            : '⚠️ Requer Autorização Prévia'}
+                        </span>
+                      </div>
+                      {chamadoDetalhe.laudoInicialCustoEstimado && (
+                        <span className="text-amber-400 font-bold font-mono">
+                          Estimativa: R$ {Number(chamadoDetalhe.laudoInicialCustoEstimado).toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-slate-300 leading-relaxed bg-slate-900/60 p-2.5 rounded-lg border border-white/5 whitespace-pre-wrap">
+                      {chamadoDetalhe.laudoInicialEmpresa}
+                    </p>
+                    <div className="text-[10px] text-slate-500 flex items-center justify-between">
+                      <span>Responsável: {chamadoDetalhe.laudoEnviadoPor || 'Empresa Prestadora'}</span>
+                      {chamadoDetalhe.laudoEnviadoEm && (
+                        <span>Enviado em: {new Date(chamadoDetalhe.laudoEnviadoEm).toLocaleString('pt-BR')}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Despacho para SOBE */}
+                {chamadoDetalhe.despachoSobeMotivo && (
+                  <div className="p-3 rounded-lg bg-blue-950/40 border border-blue-500/30 text-xs space-y-1.5">
+                    <div className="flex justify-between items-center text-blue-300">
+                      <span className="font-bold flex items-center gap-1.5">
+                        <Share2 className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Despacho da Fiscalização Técnica para a Engenharia (SOBE)</span>
+                      </span>
+                      {chamadoDetalhe.despachadoParaSobeEm && (
+                        <span className="text-[10px] text-slate-400">
+                          {new Date(chamadoDetalhe.despachadoParaSobeEm).toLocaleString('pt-BR')}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-slate-200 leading-relaxed bg-slate-900/80 p-2.5 rounded-lg border border-blue-500/20 whitespace-pre-wrap">
+                      {chamadoDetalhe.despachoSobeMotivo}
+                    </p>
+                    <div className="text-[10px] text-slate-400">
+                      Despachado por: {chamadoDetalhe.despachadoPorFiscal || 'Fiscal Técnico UERN'}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Parecer da SOBE */}
+                {chamadoDetalhe.parecerSobeTexto && (
+                  <div className="p-3 rounded-lg bg-purple-950/40 border border-purple-500/30 text-xs space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-purple-300 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Parecer Técnico da Superintendência de Obras e Engenharia (SOBE)</span>
+                      </span>
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                          chamadoDetalhe.parecerSobeFavoravel
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            : 'bg-red-500/20 text-red-300 border-red-500/40'
+                        }`}
+                      >
+                        {chamadoDetalhe.parecerSobeFavoravel ? 'Favorável à Execução' : 'Desfavorável / Com Ressalvas'}
+                      </span>
+                    </div>
+                    <p className="text-slate-200 leading-relaxed bg-slate-900/80 p-2.5 rounded-lg border border-purple-500/20 whitespace-pre-wrap">
+                      {chamadoDetalhe.parecerSobeTexto}
+                    </p>
+                    <div className="text-[10px] text-slate-400 flex items-center justify-between">
+                      <span>Engenheiro: {chamadoDetalhe.parecerSobeResponsavel || 'Engenharia SOBE'}</span>
+                      {chamadoDetalhe.parecerSobeEm && (
+                        <span>Emitido em: {new Date(chamadoDetalhe.parecerSobeEm).toLocaleString('pt-BR')}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. Decisão da Fiscalização */}
+                {chamadoDetalhe.decisaoLaudoFiscal && (
+                  <div className="p-2.5 rounded-lg bg-slate-950 border border-white/10 text-xs flex items-center justify-between">
+                    <div>
+                      <span className="text-slate-400">Decisão da Fiscalização Técnica: </span>
+                      <strong className={chamadoDetalhe.decisaoLaudoFiscal === 'APROVADO' ? 'text-emerald-400' : 'text-red-400'}>
+                        {chamadoDetalhe.decisaoLaudoFiscal === 'APROVADO' ? 'Laudo Aprovado (Execução Autorizada)' : 'Laudo Reprovado (Chamado Encerrado)'}
+                      </strong>
+                      {chamadoDetalhe.decisaoLaudoMotivo && (
+                        <p className="text-slate-300 text-[11px] mt-0.5">{chamadoDetalhe.decisaoLaudoMotivo}</p>
+                      )}
+                    </div>
+                    {chamadoDetalhe.decisaoLaudoEm && (
+                      <span className="text-[10px] text-slate-500">
+                        {new Date(chamadoDetalhe.decisaoLaudoEm).toLocaleDateString('pt-BR')}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* LINHA DO TEMPO CRONOLÓGICA (TIMELINE) */}
             <div>
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
@@ -4420,39 +4827,189 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* PAINEL DE AÇÕES CONTEXTUAIS POR PAPEL */}
+            {/* PAINEL DE AÇÕES CONTEXTUAIS POR PAPEL (CONFORME FLUXOGRAMA OFICIAL) */}
             <div className="p-4 rounded-xl bg-slate-950 border border-cyan-500/30 flex flex-wrap items-center justify-between gap-3">
               <div className="text-xs text-slate-300">
                 Ações disponíveis para seu perfil ({currentUser?.role}):
               </div>
 
               <div className="flex flex-wrap gap-2">
-                {/* 1. Empresa anexa orçamento ou declara máquina condenada */}
-                {(currentUser?.role === 'EMPRESA' || currentUser?.role === 'ADMIN') &&
-                  ['AGUARDANDO_ORCAMENTO', 'EM_TRIAGEM', 'ABERTO'].includes(chamadoDetalhe.status) && (
-                    <>
-                      {currentUser?.role === 'EMPRESA' && (
-                        <button
-                          type="button"
-                          onClick={() => setModalOrcamento(true)}
-                          className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition"
-                        >
-                          Montar Orçamento com Itens SGC
-                        </button>
-                      )}
+                {/* 1. FISCAL TÉCNICO & ADMIN: Autorização Inicial, Análise de Laudo e Decisão com SOBE */}
+                {(['FISCAL_TECNICO', 'ADMIN'].includes(currentUser?.role)) && (
+                  <>
+                    {/* Passo 2: Autorizar chamado para a contratada */}
+                    {['ABERTO', 'AGUARDANDO_AUTORIZACAO_FISCAL'].includes(chamadoDetalhe.status) && (
                       <button
                         type="button"
-                        onClick={() => handleAbrirModalCondenar(chamadoDetalhe)}
-                        className="px-3 py-1.5 rounded-lg bg-red-600/90 hover:bg-red-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition"
-                        title="Informar que o aparelho não tem conserto viável e emitir Laudo Pericial de Condenação"
+                        onClick={() => handleAutorizarChamado(chamadoDetalhe.id)}
+                        disabled={salvandoLaudoAcao}
+                        className="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md transition"
                       >
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                        <span>Declarar Máquina Condenada (Laudo)</span>
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Autorizar Chamado para Contratada</span>
+                      </button>
+                    )}
+
+                    {/* Passos 7 e 8: Analisar Laudo (Aprovar / Despachar SOBE / Reprovar) */}
+                    {['AGUARDANDO_ANALISE_LAUDO', 'PARECER_ENGENHARIA_EMITIDO'].includes(chamadoDetalhe.status) && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleAprovarLaudoFiscal}
+                          disabled={salvandoLaudoAcao}
+                          className="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md transition"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Aprovar Laudo e Liberar Execução</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setModalDespachoSobe(true)}
+                          disabled={salvandoLaudoAcao}
+                          className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition"
+                        >
+                          <Share2 className="w-3.5 h-3.5" />
+                          <span>Despachar para Engenharia (SOBE)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setModalReprovarLaudo(true)}
+                          disabled={salvandoLaudoAcao}
+                          className="px-3 py-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/40 font-bold text-xs flex items-center gap-1.5 transition"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          <span>Reprovar Laudo / Encerrar</span>
+                        </button>
+                      </>
+                    )}
+
+                    {/* Passos 17, 19 e 20: Analisar Orçamento pós-ateste e Fazer Ateste Final */}
+                    {chamadoDetalhe.status === 'ORCAMENTO_ANEXADO' && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleAprovarOrcamento('APROVAR')}
+                          className="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Aprovar Orçamento e Fazer Ateste (R$ {chamadoDetalhe.orcamentoValorTotal?.toFixed(2)})</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAprovarOrcamento('REJEITAR')}
+                          className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 border border-red-500/40 text-xs font-bold"
+                        >
+                          Rejeitar Orçamento
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
+
+                {/* 2. SUPERINTENDÊNCIA DE OBRAS E ENGENHARIA (SOBE) & ADMIN: Parecer Técnico */}
+                {(['ENGENHARIA_SOBE', 'ADMIN'].includes(currentUser?.role)) &&
+                  chamadoDetalhe.status === 'ENCAMINHADO_ENGENHARIA' && (
+                    <button
+                      type="button"
+                      onClick={() => setModalParecerSobe(true)}
+                      className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs flex items-center gap-1.5 shadow-lg transition"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Emitir Parecer Técnico da SOBE</span>
+                    </button>
+                )}
+
+                {/* 3. EMPRESA (CONTRATADA) & ADMIN: Triagem de Complexidade, Laudo, Execução e Orçamento */}
+                {(['EMPRESA', 'ADMIN'].includes(currentUser?.role)) && (
+                  <>
+                    {/* Passos 3 e 4: Analisar chamado -> Precisa de aprovação? */}
+                    {['EM_TRIAGEM', 'ABERTO'].includes(chamadoDetalhe.status) && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleExecutarDireto(chamadoDetalhe.id)}
+                          disabled={salvandoLaudoAcao}
+                          className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md transition"
+                          title="Iniciar execução imediata quando não necessitar de aprovação prévia (manutenção simples dentro do teto)"
+                        >
+                          <Wrench className="w-3.5 h-3.5" />
+                          <span>Executar Serviço Direto (Manutenção Simples)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setModalLaudoEmpresa(true)}
+                          disabled={salvandoLaudoAcao}
+                          className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md transition"
+                          title="Quando envolver alta complexidade técnica ou manutenção estimada cara acima do teto"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>Elaborar Laudo Técnico (Requer Aprovação)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleAbrirModalCondenar(chamadoDetalhe)}
+                          className="px-3 py-1.5 rounded-lg bg-red-600/90 hover:bg-red-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition"
+                        >
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                          <span>Declarar Máquina Condenada (Laudo)</span>
+                        </button>
+                      </>
+                    )}
+
+                    {/* Passo 5: Concluir Execução */}
+                    {chamadoDetalhe.status === 'APROVADO_EM_EXECUCAO' && (
+                      <button
+                        type="button"
+                        onClick={() => setModalExecucao(true)}
+                        className="px-3.5 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Concluir Execução & Anexar Fotos</span>
+                      </button>
+                    )}
+
+                    {/* Passo 16: Elaborar Orçamento pós-aprovação da solução pelo demandante */}
+                    {['CONFIRMADO_PELO_DEMANDANTE', 'CONFIRMADO_TACITAMENTE', 'AGUARDANDO_ORCAMENTO', 'ORCAMENTO_REJEITADO'].includes(chamadoDetalhe.status) && (
+                      <button
+                        type="button"
+                        onClick={() => setModalOrcamento(true)}
+                        className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md transition"
+                      >
+                        <DollarSign className="w-3.5 h-3.5" />
+                        <span>Montar Orçamento com Itens SGC</span>
+                      </button>
+                    )}
+                  </>
+                )}
+
+                {/* 4. DEMANDANTE & ADMIN: Analisar Solução e Atestar */}
+                {(['DEMANDANTE', 'ADMIN'].includes(currentUser?.role)) &&
+                  chamadoDetalhe.status === 'AGUARDANDO_CONFIRMACAO' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setModalAteste(true)}
+                        className="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Atestar Digitalmente (Solução Aprovada)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setModalRejeicao(true)}
+                        className="px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 text-xs font-bold flex items-center gap-1"
+                      >
+                        <XCircle className="w-3.5 h-3.5" />
+                        <span>Rejeitar Solução (Reenviar Serviço)</span>
                       </button>
                     </>
                 )}
 
-                {/* Botão de baixar laudo oficial de condenação */}
+                {/* Botão permanente de baixar laudo oficial de condenação se máquina condenada */}
                 {chamadoDetalhe.intervencoes?.some((i: any) => i.maquinaCondenada) && (
                   <button
                     type="button"
@@ -4464,35 +5021,16 @@ export default function HomePage() {
                   </button>
                 )}
 
-                {/* 2. Admin ações completas (Editar, Excluir, Alterar Status, Aprovar Orçamento) */}
+                {/* 5. Ações Administrativas Gerais do ADMIN */}
                 {currentUser?.role === 'ADMIN' && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    {chamadoDetalhe.status === 'ORCAMENTO_ANEXADO' && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => handleAprovarOrcamento('APROVAR')}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-500 text-slate-950 font-bold text-xs"
-                        >
-                          Aprovar Orçamento (R$ {chamadoDetalhe.orcamentoValorTotal?.toFixed(2)})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleAprovarOrcamento('REJEITAR')}
-                          className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 border border-red-500/40 text-xs font-bold"
-                        >
-                          Rejeitar
-                        </button>
-                      </>
-                    )}
-
+                  <div className="flex flex-wrap items-center gap-2 pl-2 border-l border-white/10">
                     <button
                       type="button"
                       onClick={() => handleAbrirEdicaoChamado(chamadoDetalhe)}
                       className="px-3 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-300 font-bold text-xs flex items-center gap-1.5"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
-                      <span>Editar Chamado</span>
+                      <span>Editar</span>
                     </button>
 
                     <button
@@ -4501,12 +5039,12 @@ export default function HomePage() {
                       className="px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-300 font-bold text-xs flex items-center gap-1.5"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      <span>Excluir Chamado</span>
+                      <span>Excluir</span>
                     </button>
 
                     {/* Seletor rápido de Status pelo Admin */}
                     <div className="flex items-center gap-1.5 bg-slate-900 border border-white/15 px-2 py-1 rounded-lg">
-                      <span className="text-[11px] text-slate-400">Alterar Status:</span>
+                      <span className="text-[11px] text-slate-400">Status:</span>
                       <select
                         value={chamadoDetalhe.status}
                         onChange={(e) => handleAlterarStatusDireto(e.target.value)}
@@ -4514,46 +5052,17 @@ export default function HomePage() {
                       >
                         <option value="ABERTO" className="bg-slate-900 text-white">Aberto</option>
                         <option value="EM_TRIAGEM" className="bg-slate-900 text-white">Em Triagem</option>
-                        <option value="AGUARDANDO_ORCAMENTO" className="bg-slate-900 text-white">Aguardando Orçamento</option>
-                        <option value="ORCAMENTO_ANEXADO" className="bg-slate-900 text-white">Orçamento Anexado</option>
+                        <option value="AGUARDANDO_ANALISE_LAUDO" className="bg-slate-900 text-white">Aguardando Análise Laudo</option>
+                        <option value="ENCAMINHADO_ENGENHARIA" className="bg-slate-900 text-white">Encaminhado Engenharia (SOBE)</option>
+                        <option value="PARECER_ENGENHARIA_EMITIDO" className="bg-slate-900 text-white">Parecer SOBE Emitido</option>
                         <option value="APROVADO_EM_EXECUCAO" className="bg-slate-900 text-white">Aprovado em Execução</option>
                         <option value="AGUARDANDO_CONFIRMACAO" className="bg-slate-900 text-white">Aguardando Confirmação</option>
+                        <option value="ORCAMENTO_ANEXADO" className="bg-slate-900 text-white">Orçamento Anexado</option>
                         <option value="FINALIZADO" className="bg-slate-900 text-white">Finalizado</option>
                         <option value="CANCELADO" className="bg-slate-900 text-white">Cancelado</option>
                       </select>
                     </div>
                   </div>
-                )}
-
-                {/* 3. Empresa conclui execução */}
-                {currentUser?.role === 'EMPRESA' && chamadoDetalhe.status === 'APROVADO_EM_EXECUCAO' && (
-                  <button
-                    type="button"
-                    onClick={() => setModalExecucao(true)}
-                    className="px-3 py-1.5 rounded-lg bg-cyan-500 text-slate-950 font-bold text-xs"
-                  >
-                    Concluir Execução & Anexar Fotos
-                  </button>
-                )}
-
-                {/* 4. Demandante valida / rejeita solução */}
-                {currentUser?.role === 'DEMANDANTE' && chamadoDetalhe.status === 'AGUARDANDO_CONFIRMACAO' && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setModalAteste(true)}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-500 text-slate-950 font-bold text-xs"
-                    >
-                      Atestar Digitalmente (Sem papel)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setModalRejeicao(true)}
-                      className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 border border-red-500/40 text-xs font-bold"
-                    >
-                      Rejeitar Solução
-                    </button>
-                  </>
                 )}
               </div>
             </div>
@@ -4949,6 +5458,338 @@ export default function HomePage() {
                 className="px-4 py-1.5 rounded-xl bg-red-500 text-white font-bold text-xs"
               >
                 Devolver para a Empresa Corrigir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 1: EMPRESA ELABORA LAUDO TÉCNICO PRELIMINAR (PASSOS 4 E 6) */}
+      {modalLaudoEmpresa && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-white/15 rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <FileText className="w-5 h-5 text-amber-400" />
+                <span>Elaborar Laudo Técnico Preliminar (Requer Aprovação)</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setModalLaudoEmpresa(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Conforme o fluxograma oficial, quando o serviço envolver <strong>alta complexidade</strong> ou <strong>manutenção cara</strong> (acima do teto de R$ {Number(contratoData?.contrato?.limiteAprovacaoAutomatica || 1000).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}), a empresa deve submeter este Laudo Preliminar para análise da Fiscalização Técnica antes de executar.
+            </p>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Motivo da Necessidade de Aprovação</label>
+                <select
+                  value={laudoEmpresaMotivo}
+                  onChange={(e) => setLaudoEmpresaMotivo(e.target.value)}
+                  className="w-full bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-white outline-none focus:border-amber-400"
+                >
+                  <option value="ALTA_COMPLEXIDADE">⚙️ Alta Complexidade Técnica / Diagnóstico Crítico</option>
+                  <option value="CUSTO_ELEVADO">💰 Manutenção Cara / Custo Estimado Acima do Limite Contratual</option>
+                  <option value="INFRAESTRUTURA">🏗️ Demanda Intervenção Estrutural / Civil / Elétrica Predial</option>
+                  <option value="OUTRO">⚠️ Outra Particularidade Técnica Relevante</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Estimativa Preliminar de Custo (R$)</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2 text-slate-500 font-bold">R$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Ex: 1450.00"
+                    value={laudoEmpresaCusto}
+                    onChange={(e) => setLaudoEmpresaCusto(e.target.value)}
+                    className="w-full bg-slate-950 border border-white/15 rounded-xl pl-9 pr-3 py-2 text-white font-mono focus:border-amber-400 outline-none"
+                  />
+                </div>
+                <span className="text-[10px] text-slate-500 mt-0.5 block">
+                  Teto para execução direta sem autorização: R$ {Number(contratoData?.contrato?.limiteAprovacaoAutomatica || 1000).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Diagnóstico e Justificativa Circunstanciada do Laudo *</label>
+                <textarea
+                  rows={4}
+                  placeholder="Descreva o estado do equipamento, testes realizados, defeitos detectados, peças ou serviços necessários e justificativa técnica..."
+                  value={laudoEmpresaTexto}
+                  onChange={(e) => setLaudoEmpresaTexto(e.target.value)}
+                  className="w-full bg-slate-950 border border-white/15 rounded-xl p-3 text-white outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Técnico da Contratada Responsável pelo Laudo</label>
+                <input
+                  type="text"
+                  placeholder="Nome do técnico responsável"
+                  value={laudoEmpresaTecnico}
+                  onChange={(e) => setLaudoEmpresaTecnico(e.target.value)}
+                  className="w-full bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-white focus:border-amber-400 outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-white/10">
+              <button
+                type="button"
+                onClick={() => setModalLaudoEmpresa(false)}
+                className="px-4 py-2 rounded-xl border border-white/10 text-xs text-slate-300 hover:text-white"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmeterLaudoEmpresa}
+                disabled={salvandoLaudoAcao}
+                className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md"
+              >
+                <Send className="w-4 h-4" />
+                <span>Submeter Laudo à Fiscalização</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: FISCAL DESPACHA PARA ENGENHARIA (SOBE) (PASSOS 8 E 9) */}
+      {modalDespachoSobe && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-white/15 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Share2 className="w-5 h-5 text-blue-400" />
+                <span>Despachar para a Engenharia (SOBE)</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setModalDespachoSobe(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Caso a Fiscalização Técnica tenha dúvidas sobre a viabilidade, custos ou impacto estrutural do serviço laudo pela empresa, despache este chamado para a <strong>Superintendência de Obras e Engenharia (SOBE)</strong> emitir parecer técnico.
+            </p>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Quesitos / Dúvidas Técnicas para a SOBE *</label>
+                <textarea
+                  rows={4}
+                  placeholder="Ex: Solicita-se à SOBE parecer técnico quanto à viabilidade de recuperação deste compressor vs. substituição integral do aparelho, bem como se a carga elétrica do circuito predial suporta a nova máquina..."
+                  value={despachoSobeDuvida}
+                  onChange={(e) => setDespachoSobeDuvida(e.target.value)}
+                  className="w-full bg-slate-950 border border-white/15 rounded-xl p-3 text-white outline-none focus:border-blue-400"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-white/10">
+              <button
+                type="button"
+                onClick={() => setModalDespachoSobe(false)}
+                className="px-4 py-2 rounded-xl border border-white/10 text-xs text-slate-300 hover:text-white"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleDespacharSobe}
+                disabled={salvandoLaudoAcao}
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md"
+              >
+                <Send className="w-4 h-4" />
+                <span>Confirmar Despacho para SOBE</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: ENGENHARIA (SOBE) ELABORA PARECER TÉCNICO (PASSOS 11 E 12) */}
+      {modalParecerSobe && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-white/15 rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-purple-400" />
+                <span>Emitir Parecer Técnico da SOBE</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setModalParecerSobe(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Manifestação técnica conclusiva da <strong>Superintendência de Obras e Engenharia (SOBE)</strong> em resposta à consulta da Fiscalização Técnica. O parecer será encaminhado de volta para a decisão final do Fiscal Técnico.
+            </p>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Recomendação Técnica Conclusiva</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setParecerSobeFavoravel(true)}
+                    className={`p-3 rounded-xl border text-left flex items-center gap-2 transition ${
+                      parecerSobeFavoravel
+                        ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                        : 'bg-slate-950 border-white/10 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <div>
+                      <div className="font-bold text-white">Favorável</div>
+                      <div className="text-[10px] text-slate-400">Autoriza execução do serviço</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setParecerSobeFavoravel(false)}
+                    className={`p-3 rounded-xl border text-left flex items-center gap-2 transition ${
+                      !parecerSobeFavoravel
+                        ? 'bg-red-500/20 border-red-500/50 text-red-300'
+                        : 'bg-slate-950 border-white/10 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <XCircle className="w-4 h-4 text-red-400 shrink-0" />
+                    <div>
+                      <div className="font-bold text-white">Desfavorável / Com Ressalvas</div>
+                      <div className="text-[10px] text-slate-400">Indica inviabilidade ou restrições</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Fundamentação Técnica e Parecer *</label>
+                <textarea
+                  rows={5}
+                  placeholder="Insira a fundamentação técnica do parecer, análise das normas técnicas (ABNT/ASHRAE), viabilidade econômica e recomendações para a fiscalização..."
+                  value={parecerSobeTexto}
+                  onChange={(e) => setParecerSobeTexto(e.target.value)}
+                  className="w-full bg-slate-950 border border-white/15 rounded-xl p-3 text-white outline-none focus:border-purple-400"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Engenheiro Responsável</label>
+                  <input
+                    type="text"
+                    placeholder="Nome do Engenheiro da SOBE"
+                    value={parecerSobeEngenheiro}
+                    onChange={(e) => setParecerSobeEngenheiro(e.target.value)}
+                    className="w-full bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-white focus:border-purple-400 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Matrícula / Registro CREA</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: 56789-0 / CREA-RN"
+                    value={parecerSobeMatricula}
+                    onChange={(e) => setParecerSobeMatricula(e.target.value)}
+                    className="w-full bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-white focus:border-purple-400 outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-white/10">
+              <button
+                type="button"
+                onClick={() => setModalParecerSobe(false)}
+                className="px-4 py-2 rounded-xl border border-white/10 text-xs text-slate-300 hover:text-white"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleEmitirParecerSobe}
+                disabled={salvandoLaudoAcao}
+                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md"
+              >
+                <Send className="w-4 h-4" />
+                <span>Encaminhar Parecer para a Fiscalização</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: FISCAL REPROVA LAUDO E ENCERRA CHAMADO (PASSOS 8 E 10) */}
+      {modalReprovarLaudo && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-white/15 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <XCircle className="w-5 h-5 text-red-400" />
+                <span>Reprovar Laudo Técnico / Encerrar Chamado</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setModalReprovarLaudo(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Ao reprovar o laudo, o chamado será encerrado e finalizado sem execução de serviço, ficando a justificativa registrada oficialmente para o demandante e órgãos de controle.
+            </p>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Justificativa da Não Aprovação *</label>
+                <textarea
+                  rows={4}
+                  placeholder="Ex: Intervenção técnica inviável devido à obsolescência do equipamento; custo de reparo desproporcional ao valor residual do bem, recomendando-se processo de aquisição de nova máquina pela PROAD..."
+                  value={reprovarLaudoMotivo}
+                  onChange={(e) => setReprovarLaudoMotivo(e.target.value)}
+                  className="w-full bg-slate-950 border border-white/15 rounded-xl p-3 text-white outline-none focus:border-red-400"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-white/10">
+              <button
+                type="button"
+                onClick={() => setModalReprovarLaudo(false)}
+                className="px-4 py-2 rounded-xl border border-white/10 text-xs text-slate-300 hover:text-white"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleReprovarLaudoFiscal}
+                disabled={salvandoLaudoAcao}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md"
+              >
+                <XCircle className="w-4 h-4" />
+                <span>Confirmar Encerramento</span>
               </button>
             </div>
           </div>

@@ -122,9 +122,25 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
             dataToUpdate.percentualEvolucao = 15;
             dataToUpdate.etapaAtualDescricao = 'Chamado Aberto - Aguardando Triagem';
             break;
+          case StatusChamado.AGUARDANDO_AUTORIZACAO_FISCAL:
+            dataToUpdate.percentualEvolucao = 20;
+            dataToUpdate.etapaAtualDescricao = 'Aguardando Autorização da Fiscalização Técnica';
+            break;
           case StatusChamado.EM_TRIAGEM:
             dataToUpdate.percentualEvolucao = 25;
             dataToUpdate.etapaAtualDescricao = 'Encaminhado à Empresa Prestadora';
+            break;
+          case StatusChamado.AGUARDANDO_ANALISE_LAUDO:
+            dataToUpdate.percentualEvolucao = 35;
+            dataToUpdate.etapaAtualDescricao = 'Laudo Técnico em Análise pela Fiscalização Técnica';
+            break;
+          case StatusChamado.ENCAMINHADO_ENGENHARIA:
+            dataToUpdate.percentualEvolucao = 45;
+            dataToUpdate.etapaAtualDescricao = 'Despachado para Parecer da Engenharia (SOBE)';
+            break;
+          case StatusChamado.PARECER_ENGENHARIA_EMITIDO:
+            dataToUpdate.percentualEvolucao = 55;
+            dataToUpdate.etapaAtualDescricao = 'Parecer da SOBE Emitido - Aguardando Decisão do Fiscal';
             break;
           case StatusChamado.AGUARDANDO_ORCAMENTO:
             dataToUpdate.percentualEvolucao = 30;
@@ -136,7 +152,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
             break;
           case StatusChamado.APROVADO_EM_EXECUCAO:
             dataToUpdate.percentualEvolucao = 65;
-            dataToUpdate.etapaAtualDescricao = 'Orçamento Aprovado - Em Execução';
+            dataToUpdate.etapaAtualDescricao = 'Serviço Autorizado - Em Execução pela Empresa';
             break;
           case StatusChamado.AGUARDANDO_CONFIRMACAO:
             dataToUpdate.percentualEvolucao = 85;

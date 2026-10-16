@@ -65,6 +65,13 @@ export default function Navbar({ currentUser, onRoleSwitched, activeTab, onTabCh
       badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
     },
     {
+      role: 'ENGENHARIA_SOBE',
+      nome: 'Eng. Roberto Alves',
+      email: 'sobe.engenharia@uern.br',
+      cargo: 'Superintendência de Obras e Engenharia • SOBE',
+      badgeColor: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
+    },
+    {
       role: 'EMPRESA',
       nome: 'Josemildo (Preposto)',
       email: 'ebenezerecomser@gmail.com',
@@ -157,6 +164,7 @@ export default function Navbar({ currentUser, onRoleSwitched, activeTab, onTabCh
                   {currentUser?.role === 'DEMANDANTE' && `🏛️ ${currentUser?.unidadeSigla || 'Unidade'}`}
                   {currentUser?.role === 'EMPRESA' && (currentUser?.empresaRazaoSocial ? `🛠️ ${currentUser.empresaRazaoSocial}` : '🛠️ L O DOS SANTOS')}
                   {currentUser?.role === 'FISCAL_TECNICO' && '📐 Fiscal Técnico (SGC)'}
+                  {currentUser?.role === 'ENGENHARIA_SOBE' && '🏗️ Engenharia SOBE'}
                   {currentUser?.role === 'FISCAL_ADM' && '📋 Fiscal Adm (SGC)'}
                   {currentUser?.role === 'GESTOR_CONTRATO' && '🏛️ Gestor Contrato (SGC)'}
                 </div>

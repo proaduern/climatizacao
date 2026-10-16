@@ -214,6 +214,14 @@ async function runSeedTreinamento() {
       unidadeId: unidades['PROAD'].id,
     },
     {
+      nome: 'Aluno Engenharia SOBE (Eng. Marcelo Costa)',
+      cpf: '000.777.888-99',
+      email: 'aluno.sobe@uern.br',
+      matricula: 'TR-7007',
+      role: RoleUsuario.ENGENHARIA_SOBE,
+      unidadeId: unidades['PROAD'].id,
+    },
+    {
       nome: 'Aluno Empresa (Técnico Roberto Silva)',
       cpf: '000.444.555-66',
       email: 'aluno.empresa@prestadora.com',

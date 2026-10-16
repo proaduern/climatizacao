@@ -19,6 +19,7 @@ enum RoleUsuario {
   GESTOR_CONTRATO    // Gestor do Contrato no SGC (recebimento definitivo)
   DEMANDANTE         // Servidor da Unidade UERN (abertura, acompanhamento e ateste)
   EMPRESA            // Prestadora de serviço contratada (técnicos e prepostos)
+  ENGENHARIA_SOBE    // Superintendência de Obras e Engenharia (pareceres técnicos)
 }
 
 enum TipoEquipamento {
@@ -73,11 +74,15 @@ enum DefeitoCorretivaComum {
 
 enum StatusChamado {
   ABERTO                    // Aberto pelo demandante da Unidade
+  AGUARDANDO_AUTORIZACAO_FISCAL // Triagem inicial / autorização pelo Fiscal Técnico
   EM_TRIAGEM                // Encaminhado à empresa prestadora
+  AGUARDANDO_ANALISE_LAUDO  // Empresa identificou complexidade/custo e elaborou Laudo Prévio
+  ENCAMINHADO_ENGENHARIA    // Fiscal Técnico despachou para Parecer da SOBE (Engenharia)
+  PARECER_ENGENHARIA_EMITIDO // SOBE emitiu parecer e devolveu ao Fiscal Técnico
   AGUARDANDO_ORCAMENTO      // Empresa em vistoria/diagnóstico in loco
   ORCAMENTO_ANEXADO         // Empresa enviou orçamento baseado nos itens do SGC
   ORCAMENTO_REJEITADO       // Admin PROAD contestou valores ou itens
-  APROVADO_EM_EXECUCAO      // Admin PROAD autorizou a execução
+  APROVADO_EM_EXECUCAO      // Fiscal Técnico autorizou a execução
   AGUARDANDO_CONFIRMACAO    // Empresa concluiu e juntou fotos/laudo (abre prazo de 5 dias)
   CONFIRMADO_PELO_DEMANDANTE // Demandante testou e atestou ativamente no sistema
   CONFIRMADO_TACITAMENTE    // Prazo expirou sem manifestação -> aceite tácito
@@ -337,9 +342,35 @@ model Chamado {
 
   // Fase Orçamento Geral do Chamado
   orcamentoValorTotal   Decimal?      @db.Decimal(12, 2)
-  orcamentoAprovadoPor  String?       // E-mail ou ID do Admin PROAD
+  orcamentoAprovadoPor  String?       // E-mail ou ID do Fiscal Técnico / Admin PROAD
   orcamentoAprovadoEm   DateTime?
   orcamentoMotivoRejeicao String?
+
+  // Fase de Laudo Prévio / Análise de Complexidade e Parecer SOBE (Conforme Fluxo de Processos)
+  requerAprovacaoPrevia       Boolean       @default(false)
+  motivoRequerAprovacao       String?       // "ALTA_COMPLEXIDADE" | "CUSTO_ELEVADO" | "INFRAESTRUTURA" | "OUTRO"
+  laudoInicialEmpresa         String?       @db.Text
+  laudoInicialCustoEstimado   Decimal?      @db.Decimal(12, 2)
+  laudoInicialAnexos          String[]      @default([])
+  laudoEnviadoEm              DateTime?
+  laudoEnviadoPor             String?
+
+  // Despacho para Engenharia (SOBE)
+  despachadoParaSobeEm        DateTime?
+  despachoSobeMotivo          String?       @db.Text
+  despachadoPorFiscal         String?
+
+  // Parecer Técnico da SOBE
+  parecerSobeTexto            String?       @db.Text
+  parecerSobeResponsavel      String?
+  parecerSobeEm               DateTime?
+  parecerSobeFavoravel        Boolean?
+
+  // Decisão da Fiscalização Técnica sobre o Laudo
+  decisaoLaudoFiscal          String?       // "APROVADO" | "REJEITADO"
+  decisaoLaudoEm              DateTime?
+  decisaoLaudoPor             String?
+  decisaoLaudoMotivo          String?       @db.Text
 
   // Linha do Tempo, Barra de Progresso e SLAs
   percentualEvolucao    Int           @default(15)  // 15% (Aberto), 35% (Orçamento), 65% (Execução), 85% (Ateste), 100% (Finalizado)

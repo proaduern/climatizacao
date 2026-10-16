@@ -172,6 +172,14 @@ async function main() {
       unidadeId: unidades['PROAD'].id,
     },
     {
+      nome: 'Eng. Roberto Alves (SOBE)',
+      email: 'sobe.engenharia@uern.br',
+      cpf: '987.654.321-00',
+      matricula: '56789-0',
+      role: RoleUsuario.ENGENHARIA_SOBE,
+      unidadeId: unidades['PROAD'].id,
+    },
+    {
       nome: 'Josemildo (Preposto • L O DOS SANTOS ECOMSER)',
       email: 'ebenezerecomser@gmail.com',
       cpf: '630.343.690-01',

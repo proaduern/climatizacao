@@ -14,7 +14,7 @@ export interface SessionPayload {
   email: string;
   cpf: string;
   matricula?: string | null;
-  role: 'ADMIN' | 'DEMANDANTE' | 'EMPRESA' | 'FISCAL_TECNICO' | 'FISCAL_ADM' | 'GESTOR_CONTRATO';
+  role: 'ADMIN' | 'DEMANDANTE' | 'EMPRESA' | 'FISCAL_TECNICO' | 'FISCAL_ADM' | 'GESTOR_CONTRATO' | 'ENGENHARIA_SOBE';
   unidadeId?: string | null;
   unidadeSigla?: string | null;
   unidadeNome?: string | null;
