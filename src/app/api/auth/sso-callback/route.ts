@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     const token = searchParams.get('token');
 
     if (!token) {
-      return NextResponse.redirect(new URL('/login?error=token_ausente', request.url));
+      return NextResponse.redirect(new URL('/?error=token_ausente', request.url));
     }
 
     const payload = await verificarTokenComFallback(token);
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     };
 
     if (targetSystem !== 'CLIMATIZACAO' && targetSystem !== 'MANUTENCAO' && !email) {
-      return NextResponse.redirect(new URL('/login?error=destino_invalido', request.url));
+      return NextResponse.redirect(new URL('/?error=destino_invalido', request.url));
     }
 
     const emailLimpo = email.toLowerCase().trim();
@@ -167,6 +167,6 @@ export async function GET(request: NextRequest) {
     return response;
   } catch (err: any) {
     console.error('Erro no callback SSO do SIG-CLIMA:', err);
-    return NextResponse.redirect(new URL('/login?error=falha_sso', request.url));
+    return NextResponse.redirect(new URL('/?error=falha_sso', request.url));
   }
 }
