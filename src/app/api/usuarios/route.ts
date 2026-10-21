@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       usuarios,
       unidades,
-      empresaAtiva: empresaAtiva || contratoAtivo?.empresa,
+      empresaAtiva: contratoAtivo?.empresa || empresaAtiva,
       contratoAtivo,
       equipeSgc,
     });

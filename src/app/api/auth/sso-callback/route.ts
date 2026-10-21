@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     }
 
     const payload = await verificarTokenComFallback(token);
-    const { email, nome, matricula, role, targetSystem, unidadeSigla, cnpjEmpresa, razaoSocial } = payload as {
+    const { email, nome, matricula, role, targetSystem, unidadeSigla, unidadeNome, cnpjEmpresa, razaoSocial } = payload as {
       userId?: string;
       email: string;
       nome: string;
@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
       role?: string;
       targetSystem: string;
       unidadeSigla?: string;
+      unidadeNome?: string;
       cnpjEmpresa?: string;
       razaoSocial?: string;
     };
@@ -80,8 +81,8 @@ export async function GET(request: NextRequest) {
         u = await prisma.unidade.create({
           data: {
             sigla: unidadeSigla,
-            nome: `Unidade ${unidadeSigla}`,
-            campus: 'Central Mossoró',
+            nome: unidadeNome || unidadeSigla,
+            campus: 'Mossoró',
           },
         });
       }

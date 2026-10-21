@@ -25,86 +25,47 @@ interface NavbarProps {
 export default function Navbar({ currentUser, onRoleSwitched, activeTab, onTabChange }: NavbarProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
-  const [tecnicosCadastrados, setTecnicosCadastrados] = useState<any[]>([]);
+  const [usuariosReais, setUsuariosReais] = useState<any[]>([]);
 
-  // Carrega técnicos da empresa cadastrados pelo Admin
+  // Carrega usuários reais cadastrados no sistema / Portal PROAD
   useEffect(() => {
-    fetch('/api/usuarios?role=EMPRESA')
+    if (!dropdownOpen) return;
+    fetch('/api/usuarios')
       .then((res) => res.json())
       .then((data) => {
         if (data.usuarios) {
-          // Filtra técnicos excluindo o preposto
-          const tecs = data.usuarios.filter((u: any) => !u.nome.toLowerCase().includes('preposto'));
-          setTecnicosCadastrados(tecs);
+          setUsuariosReais(data.usuarios.filter((u: any) => u.ativo !== false));
         }
       })
       .catch(() => {});
   }, [dropdownOpen]);
 
-  // Personas Oficiais com dados reais sincronizados do SGC
-  const basePersonas = [
-    {
-      role: 'ADMIN',
-      nome: 'Pedro Eloy de Paiva Farias',
-      email: 'pedroeloy@uern.br',
-      cargo: 'Gestor do Contrato • PROAD / SGC',
-      badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
-    },
-    {
-      role: 'ADMIN',
-      nome: 'PROAD Infraestrutura',
-      email: 'fernando.admin@uern.br',
-      cargo: 'Administrador do Sistema',
-      badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
-    },
-    {
-      role: 'FISCAL_TECNICO',
-      nome: 'José Luiz de Melo Júnior',
-      email: 'joseluiz@uern.br',
-      cargo: 'Fiscal Técnico (Contrato 11/2026 • SGC)',
-      badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-    },
-    {
-      role: 'ENGENHARIA_SOBE',
-      nome: 'Eng. Roberto Alves',
-      email: 'sobe.engenharia@uern.br',
-      cargo: 'Superintendência de Obras e Engenharia • SOBE',
-      badgeColor: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
-    },
-    {
-      role: 'EMPRESA',
-      nome: 'Josemildo (Preposto)',
-      email: 'ebenezerecomser@gmail.com',
-      cargo: 'Preposto SGC • L O DOS SANTOS ECOMSER',
-      badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-    },
-    {
-      role: 'DEMANDANTE',
-      nome: 'Maria Souza Silva',
-      email: 'maria.fafic@uern.br',
-      cargo: 'Demandante • FAFIC',
-      badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-    },
-    {
-      role: 'DEMANDANTE',
-      nome: 'João Paulo Medeiros',
-      email: 'joao.proad@uern.br',
-      cargo: 'Demandante • Gabinete PROAD',
-      badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-    },
-  ];
+  const getBadgeColor = (role: string) => {
+    switch (role) {
+      case 'ADMIN':
+        return 'bg-purple-500/20 text-purple-300 border-purple-500/30';
+      case 'FISCAL_TECNICO':
+        return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
+      case 'FISCAL_ADM':
+        return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
+      case 'ENGENHARIA_SOBE':
+        return 'bg-orange-500/20 text-orange-300 border-orange-500/30';
+      case 'EMPRESA':
+        return 'bg-amber-500/20 text-amber-300 border-amber-500/30';
+      default:
+        return 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30';
+    }
+  };
 
-  // Adiciona técnicos da empresa cadastrados pelo admin
-  const dynamicPersonas = [
-    ...basePersonas,
-    ...tecnicosCadastrados.map((tec) => ({
-      role: 'EMPRESA',
-      nome: `${tec.nome} (Técnico)`,
-      email: tec.email,
-      cargo: `Técnico de Campo (CPF: ${tec.cpf || 'Cadastrado'})`,
-      badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
-    })),
-  ];
+  const dynamicPersonas = usuariosReais.map((u) => ({
+    role: u.role,
+    nome: u.nome,
+    email: u.email,
+    cargo: u.unidade?.sigla
+      ? `${u.unidade.sigla} • ${u.unidade.nome}`
+      : u.empresa?.razaoSocial || u.email,
+    badgeColor: getBadgeColor(u.role),
+  }));
 
   const handleSwitchPersona = async (email: string) => {
     setSwitching(true);
@@ -123,7 +84,11 @@ export default function Navbar({ currentUser, onRoleSwitched, activeTab, onTabCh
     }
   };
 
-  const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL || 'http://localhost:3001';
+  const portalUrl =
+    process.env.NEXT_PUBLIC_PORTAL_URL ||
+    (typeof window !== 'undefined' && window.location.hostname === 'localhost'
+      ? 'http://localhost:3001'
+      : 'https://portal-proad.vercel.app');
 
   return (
     <header className="border-b border-white/10 bg-slate-900/90 backdrop-blur-md sticky top-0 z-40 px-6 py-3.5 shadow-xl">

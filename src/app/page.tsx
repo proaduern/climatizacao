@@ -4410,7 +4410,7 @@ export default function HomePage() {
               </div>
             </form>
 
-            {/* SEÇÃO DE AUDITORIA FINANCEIRA & RESTAURAÇÃO DE SALDO (R$ 740,00) */}
+            {/* SEÇÃO DE AUDITORIA FINANCEIRA DO CONTRATO */}
             <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
                 <div>
@@ -4425,7 +4425,7 @@ export default function HomePage() {
                     <span>Auditoria do Consumo Contratual & Chamados Vinculados</span>
                   </h4>
                   <p className="text-xs text-slate-300 mt-1 max-w-3xl">
-                    Verificação e rastreabilidade total do valor consumido de <strong>R$ {contratoData?.contrato?.totalConsumido?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || '740,00'}</strong> no saldo deste contrato.
+                    Verificação e rastreabilidade total do valor consumido de <strong>R$ {(contratoData?.contrato?.totalConsumido ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong> no saldo deste contrato.
                   </p>
                 </div>
 
@@ -4437,36 +4437,6 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Caixa Explicativa dos R$ 740,00 */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-cyan-500/30 text-xs text-slate-300 space-y-2.5">
-                <div className="font-bold text-white flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-cyan-400" />
-                  <span>Esclarecimento Técnico sobre o valor de R$ 740,00:</span>
-                </div>
-                <p className="leading-relaxed">
-                  Não existe nenhum lançamento órfão ou serviço sem chamado no banco de dados. O valor consumido de <strong>R$ 740,00</strong> decorre exatamente dos dois chamados de demonstração cadastrados no povoamento inicial (seed) do sistema:
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                  <div className="p-3 rounded-lg bg-slate-900 border border-white/5 space-y-1">
-                    <div className="flex justify-between font-bold">
-                      <span className="text-cyan-300 font-mono">CLIMA-2026-00001</span>
-                      <span className="text-amber-300 font-mono">R$ 240,00</span>
-                    </div>
-                    <div className="text-[11px] text-slate-400">FAFIC • Sala 04 (Aguardando Confirmação)</div>
-                  </div>
-                  <div className="p-3 rounded-lg bg-slate-900 border border-white/5 space-y-1">
-                    <div className="flex justify-between font-bold">
-                      <span className="text-cyan-300 font-mono">CLIMA-2026-00002</span>
-                      <span className="text-amber-300 font-mono">R$ 500,00</span>
-                    </div>
-                    <div className="text-[11px] text-slate-400">PROAD • Gabinete (Aprovado em Execução)</div>
-                  </div>
-                </div>
-                <p className="text-[11px] text-slate-400 pt-1">
-                  Caso queira iniciar o sistema com <strong>100% do saldo íntegro (R$ 0,00 consumido)</strong>, você pode excluir esses chamados de teste com um clique no botão abaixo:
-                </p>
-              </div>
-
               {/* Botões de Ação de Auditoria */}
               <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
                 <button
@@ -4476,17 +4446,6 @@ export default function HomePage() {
                 >
                   <FileText className="w-4 h-4 text-cyan-400" />
                   <span>Ver Extrato Completo de Chamados</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleZerarSaldoDemonstrativo}
-                  disabled={zerandoSaldo}
-                  className="px-5 py-2.5 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/40 font-bold text-xs transition flex items-center gap-2 disabled:opacity-50"
-                  title="Remove os chamados de teste do seed, liberando as máquinas de volta para ATIVO e restaurando o saldo para R$ 1.166.605,42"
-                >
-                  <RefreshCw className={`w-4 h-4 text-red-400 ${zerandoSaldo ? 'animate-spin' : ''}`} />
-                  <span>{zerandoSaldo ? 'Restaurando Saldo...' : 'Zerar Consumo Demonstrativo (Restaurar Saldo Integral)'}</span>
                 </button>
               </div>
             </div>
@@ -6591,17 +6550,6 @@ export default function HomePage() {
                 <div className="text-lg font-black text-emerald-300 font-mono mt-0.5">
                   R$ {contratoData?.contrato?.saldoDisponivel?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </div>
-              </div>
-            </div>
-
-            {/* Esclarecimento Técnico sobre os R$ 740,00 */}
-            <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-200/90 leading-relaxed flex items-start gap-2.5">
-              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-              <div>
-                <strong className="text-amber-300">Auditoria dos R$ 740,00 consumidos:</strong>
-                <p className="mt-0.5 text-slate-300">
-                  Não existe nenhum lançamento órfão ou serviço sem chamado. Este montante corresponde à soma de <strong>CLIMA-2026-00001 (R$ 240,00)</strong> e <strong>CLIMA-2026-00002 (R$ 500,00)</strong> criados na demonstração inicial (seed). Você pode editá-los individualmente na lista abaixo ou zerá-los no botão ao final.
-                </p>
               </div>
             </div>
 
