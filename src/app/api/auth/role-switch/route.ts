@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { setSessionCookie } from '@/lib/auth';
+import { getSession, setSessionCookie } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await getSession();
+    if (!session || session.role !== 'ADMIN') {
+      return NextResponse.json(
+        { error: 'Apenas Administradores autenticados podem alternar perfil de sessão.' },
+        { status: 403 }
+      );
+    }
+
     const { targetEmail } = await request.json();
 
     if (!targetEmail) {

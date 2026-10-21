@@ -118,6 +118,19 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: 'Nenhum item orçado informado.' }, { status: 400 });
     }
 
+    // Pré-carrega os itens de preço em lote fora do loop para evitar N+1 dentro da transação
+    const todosItemPrecoIds = Array.from(
+      new Set(
+        intervencoesItens.flatMap((inter: any) =>
+          Array.isArray(inter.itens) ? inter.itens.map((it: any) => it.itemPrecoId).filter(Boolean) : []
+        )
+      )
+    );
+    const itensPrecoLista = await prisma.itemContratoPreco.findMany({
+      where: { id: { in: todosItemPrecoIds } },
+    });
+    const mapaItensPreco = new Map(itensPrecoLista.map((ip) => [ip.id, ip]));
+
     let valorTotalGeral = 0;
 
     await prisma.$transaction(async (tx) => {
@@ -128,32 +141,41 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         });
 
         let valorIntervencao = 0;
+        const novosDetalhamentos: Array<{
+          intervencaoId: string;
+          itemPrecoId: string;
+          quantidade: number;
+          valorUnitarioContratual: number;
+          valorTotal: number;
+        }> = [];
 
         for (const item of inter.itens) {
-          const itemPreco = await tx.itemContratoPreco.findUnique({
-            where: { id: item.itemPrecoId },
-          });
+          const itemPreco = mapaItensPreco.get(item.itemPrecoId);
 
           if (itemPreco) {
             const vUnit = Number(itemPreco.valorUnitario);
-            const qtd = Number(item.quantidade) || 1;
-            const subtotal = vUnit * qtd;
+            const qtd = Math.max(0.01, Number(item.quantidade) || 1);
+            const subtotal = Math.round(vUnit * qtd * 100) / 100;
 
-            valorIntervencao += subtotal;
+            valorIntervencao = Math.round((valorIntervencao + subtotal) * 100) / 100;
 
-            await tx.orcamentoItemDetalhamento.create({
-              data: {
-                intervencaoId: inter.intervencaoId,
-                itemPrecoId: item.itemPrecoId,
-                quantidade: qtd,
-                valorUnitarioContratual: vUnit,
-                valorTotal: subtotal,
-              },
+            novosDetalhamentos.push({
+              intervencaoId: inter.intervencaoId,
+              itemPrecoId: item.itemPrecoId,
+              quantidade: qtd,
+              valorUnitarioContratual: vUnit,
+              valorTotal: subtotal,
             });
           }
         }
 
-        valorTotalGeral += valorIntervencao;
+        if (novosDetalhamentos.length > 0) {
+          await tx.orcamentoItemDetalhamento.createMany({
+            data: novosDetalhamentos,
+          });
+        }
+
+        valorTotalGeral = Math.round((valorTotalGeral + valorIntervencao) * 100) / 100;
 
         await tx.intervencaoItem.update({
           where: { id: inter.intervencaoId },

@@ -13,32 +13,45 @@ function inferirCidade(campus?: string | null, sigla?: string | null, nome?: str
   return 'Mossoró';
 }
 
+let lastPortalSyncAt = 0;
+const SYNC_TTL_MS = 10 * 60 * 1000; // 10 minutos de cache entre sincronizações
+
 async function syncUnidadesFromPortal() {
+  const now = Date.now();
+  if (now - lastPortalSyncAt < SYNC_TTL_MS) return;
+
   try {
-    const portalUnidades: Array<{ sigla: string; nome: string; campus: string; ativo: boolean }> =
-      await prisma.$queryRawUnsafe(
+    const [portalUnidades, climaUnidades] = await Promise.all([
+      prisma.$queryRawUnsafe<Array<{ sigla: string; nome: string; campus: string; ativo: boolean }>>(
         'SELECT sigla, nome, campus, ativo FROM portal.portal_unidades WHERE ativo = true ORDER BY sigla ASC'
-      );
+      ),
+      prisma.unidade.findMany({ select: { sigla: true, nome: true, campus: true, ativo: true } }),
+    ]);
 
     if (portalUnidades && portalUnidades.length > 0) {
+      const climaMap = new Map(climaUnidades.map((u) => [u.sigla, u]));
       for (const pu of portalUnidades) {
-        const cidade = inferirCidade(pu.campus, pu.sigla, pu.nome);
-        await prisma.unidade.upsert({
-          where: { sigla: pu.sigla },
-          update: {
-            nome: pu.nome,
-            campus: pu.campus,
-            ativo: true,
-          },
-          create: {
-            sigla: pu.sigla,
-            nome: pu.nome,
-            campus: pu.campus,
-            cidade,
-            ativo: true,
-          },
-        });
+        const atual = climaMap.get(pu.sigla);
+        if (!atual || atual.nome !== pu.nome || atual.campus !== pu.campus || !atual.ativo) {
+          const cidade = inferirCidade(pu.campus, pu.sigla, pu.nome);
+          await prisma.unidade.upsert({
+            where: { sigla: pu.sigla },
+            update: {
+              nome: pu.nome,
+              campus: pu.campus,
+              ativo: true,
+            },
+            create: {
+              sigla: pu.sigla,
+              nome: pu.nome,
+              campus: pu.campus,
+              cidade,
+              ativo: true,
+            },
+          });
+        }
       }
+      lastPortalSyncAt = now;
     }
   } catch (e) {
     // Caso o schema portal não esteja acessível, mantém unidades locais

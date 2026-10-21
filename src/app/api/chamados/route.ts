@@ -172,11 +172,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 3. Calcula Protocolo e SLAs
+    // 3. Calcula SLAs e Protocolo Sequencial com proteção contra colisões (P2002) e exclusões
     const anoAtual = new Date().getFullYear();
-    const totalDoAno = await prisma.chamado.count();
-    const numeroProtocolo = `CLIMA-${anoAtual}-${String(totalDoAno + 1).padStart(5, '0')}`;
-
     const slaHoras = urgente
       ? contratoAtivo.prazoAtendimentoHorasUrgente
       : contratoAtivo.prazoAtendimentoHorasRegular;
@@ -184,8 +181,23 @@ export async function POST(request: NextRequest) {
     const prazoLimiteAtendimento = new Date();
     prazoLimiteAtendimento.setHours(prazoLimiteAtendimento.getHours() + slaHoras);
 
-    // 4. Criação atômica do Chamado, Intervenções e Timeline
-    const novoChamado = await prisma.$transaction(async (tx) => {
+    const prefixoAno = `CLIMA-${anoAtual}-`;
+    let novoChamado: any = null;
+
+    for (let tentativa = 0; tentativa < 4; tentativa++) {
+      try {
+        const ultimoDoAno = await prisma.chamado.findFirst({
+          where: { numeroProtocolo: { startsWith: prefixoAno } },
+          orderBy: { numeroProtocolo: 'desc' },
+          select: { numeroProtocolo: true },
+        });
+        const ultimoSeq = ultimoDoAno?.numeroProtocolo
+          ? parseInt(ultimoDoAno.numeroProtocolo.replace(prefixoAno, ''), 10) || 0
+          : 0;
+        const numeroProtocolo = `${prefixoAno}${String(ultimoSeq + 1 + tentativa).padStart(5, '0')}`;
+
+        // 4. Criação atômica do Chamado, Intervenções e Timeline
+        novoChamado = await prisma.$transaction(async (tx) => {
       // 4.1 Resolução de Ambiente da Unidade
       let finalAmbienteId = ambienteId || null;
       let finalTipoAmbiente: any = null;
@@ -342,7 +354,15 @@ export async function POST(request: NextRequest) {
       });
 
       return chamado;
-    });
+    }, { timeout: 15000 });
+        break;
+      } catch (txErr: any) {
+        if (txErr?.code === 'P2002' && tentativa < 3) {
+          continue;
+        }
+        throw txErr;
+      }
+    }
 
     return NextResponse.json({
       success: true,
