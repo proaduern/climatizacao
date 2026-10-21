@@ -13,7 +13,7 @@ function inferirCidade(campus?: string | null, sigla?: string | null, nome?: str
   return 'Mossoró';
 }
 
-export async function syncUnidadesFromPortal() {
+async function syncUnidadesFromPortal() {
   try {
     const portalUnidades: Array<{ sigla: string; nome: string; campus: string; ativo: boolean }> =
       await prisma.$queryRawUnsafe(
