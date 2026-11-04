@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import PdfAutenticacaoInit from '@/components/PdfAutenticacaoInit';
 
 export const metadata: Metadata = {
   title: 'SIG-CLIMA • Gestão de Climatização e Refrigeração | PROAD - UERN',
@@ -14,6 +15,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+        <PdfAutenticacaoInit modulo="CLIMATIZACAO_DOCUMENTO" />
         {children}
       </body>
     </html>
