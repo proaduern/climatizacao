@@ -44,6 +44,7 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { estamparAutenticacaoNoJsPdf } from '@/components/PdfAutenticacaoInit';
 
 export default function HomePage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -1353,17 +1354,10 @@ export default function HomePage() {
     doc.text('Divisão de Engenharia e Manutenção Predial / PROAD', margin + colW + 10, currentY + 23.5);
     doc.text('Visto de Ciência Administrativa e Homologação', margin + colW + 10, currentY + 27);
 
-    // Rodapé de Autenticidade Digital
-    doc.setDrawColor(220, 220, 220);
-    doc.line(margin, 280, pageWidth - margin, 280);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(120, 120, 120);
-    const hashAutenticidade = `SHA256-${chamado.id.replace(/-/g, '').slice(0, 16).toUpperCase()}-${new Date().getFullYear()}`;
-    doc.text(`Documento emitido eletronicamente em ${new Date().toLocaleString('pt-BR')} pelo SIG-CLIMA UERN • Código de Autenticidade: ${hashAutenticidade}`, margin, 284);
-    doc.text(`Protocolo: ${chamado.numeroProtocolo} • Tombo Avaliado: ${eq?.tombo || 'S/N'} • Página 1 de 1`, margin, 288);
-
-    doc.save(`Laudo_Tecnico_Condenacao_Tombo_${eq?.tombo || 'MAQUINA'}_${chamado.numeroProtocolo}.pdf`);
+    // Rodapé de Autenticidade Digital Oficial PROAD
+    const nomeArquivoLaudo = `Laudo_Tecnico_Condenacao_Tombo_${eq?.tombo || 'MAQUINA'}_${chamado.numeroProtocolo}.pdf`;
+    estamparAutenticacaoNoJsPdf(doc, nomeArquivoLaudo, 'LAUDO_CONDENACAO_CLIMA');
+    doc.save(nomeArquivoLaudo);
   };
 
   // ==============================================================
@@ -1976,7 +1970,9 @@ export default function HomePage() {
     doc.text(`${faturamentoData.fiscalTecnicoNome || 'Prof. Dr. Fernando Santos'}`, 14, finalY + 22);
     doc.text(`Fiscal Técnico do Contrato • Matrícula UERN: ${faturamentoData.fiscalTecnicoMatricula || '98765-4'}`, 14, finalY + 26);
 
-    doc.save(`Relatorio_Fiscalizacao_Climatizacao_${faturamentoData.mesAno.replace('/', '_')}.pdf`);
+    const nomeArquivoRelatorio = `Relatorio_Fiscalizacao_Climatizacao_${faturamentoData.mesAno.replace('/', '_')}.pdf`;
+    estamparAutenticacaoNoJsPdf(doc, nomeArquivoRelatorio, 'RELATORIO_FISCALIZACAO_CLIMA');
+    doc.save(nomeArquivoRelatorio);
   };
 
   return (
