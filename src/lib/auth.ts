@@ -6,6 +6,7 @@ const SECRET = new TextEncoder().encode(JWT_SECRET_STRING);
 const SSO_SECRET = new TextEncoder().encode(process.env.PROAD_SSO_SECRET || 'uern_portal_proad_sso_master_key_2026_super_seguro');
 
 export const COOKIE_NAME = 'clima_uern_session';
+export const ADMIN_IMPERSONACAO_COOKIE_NAME = 'clima_admin_impersonacao';
 export const SESSION_MAX_AGE = 60 * 60 * 24; // 24 horas
 
 export interface SessionPayload {
@@ -42,7 +43,10 @@ export async function setSessionCookie(payload: SessionPayload): Promise<void> {
   });
 }
 
-export async function getSession(): Promise<SessionPayload | null> {
+/**
+ * Retorna sempre a sesso real autenticada no cookie primrio.
+ */
+export async function obterSessaoReal(): Promise<SessionPayload | null> {
   try {
     const cookieStore = cookies();
     const token = cookieStore.get(COOKIE_NAME)?.value;
@@ -55,6 +59,53 @@ export async function getSession(): Promise<SessionPayload | null> {
   }
 }
 
+/**
+ * Retorna a sesso ativa. Se for Administrador e houver cookie de simulao, retorna a sesso simulada.
+ */
+export async function getSession(): Promise<SessionPayload | null> {
+  try {
+    const realSession = await obterSessaoReal();
+    if (!realSession) return null;
+
+    if (realSession.role === 'ADMIN') {
+      const cookieStore = cookies();
+      const impToken = cookieStore.get(ADMIN_IMPERSONACAO_COOKIE_NAME)?.value;
+      if (impToken) {
+        const { payload } = await jwtVerify(impToken, SECRET);
+        if (payload) {
+          return payload as unknown as SessionPayload;
+        }
+      }
+    }
+
+    return realSession;
+  } catch {
+    return null;
+  }
+}
+
+export async function iniciarAtuarComo(payload: SessionPayload): Promise<void> {
+  const realSession = await obterSessaoReal();
+  if (!realSession || realSession.role !== 'ADMIN') {
+    throw new Error('Apenas Administradores podem alternar perfis.');
+  }
+
+  const token = await createSessionToken(payload);
+  const cookieStore = cookies();
+  cookieStore.set(ADMIN_IMPERSONACAO_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 60 * 60 * 8, // 8 horas
+  });
+}
+
+export async function encerrarAtuarComo(): Promise<void> {
+  const cookieStore = cookies();
+  cookieStore.delete(ADMIN_IMPERSONACAO_COOKIE_NAME);
+}
+
 export async function verifySsoToken(token: string): Promise<any> {
   const { payload } = await jwtVerify(token, SSO_SECRET);
   return payload;
@@ -63,6 +114,7 @@ export async function verifySsoToken(token: string): Promise<any> {
 export async function clearSessionCookie(): Promise<void> {
   const cookieStore = cookies();
   cookieStore.delete(COOKIE_NAME);
+  cookieStore.delete(ADMIN_IMPERSONACAO_COOKIE_NAME);
   cookieStore.set(COOKIE_NAME, '', {
     path: '/',
     maxAge: 0,

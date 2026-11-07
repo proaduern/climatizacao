@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import BannerTreinamento from '@/components/BannerTreinamento';
+import BarraImpersonacaoAdmin from '@/components/BarraImpersonacaoAdmin';
 import {
   Snowflake,
   Wrench,
@@ -48,6 +49,7 @@ import { estamparAutenticacaoNoJsPdf } from '@/components/PdfAutenticacaoInit';
 
 export default function HomePage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [realUser, setRealUser] = useState<any>(null);
   const [loadingUser, setLoadingUser] = useState(true);
 
   // Dados do Contrato
@@ -266,6 +268,7 @@ export default function HomePage() {
       if (res.ok) {
         const data = await res.json();
         setCurrentUser(data.user);
+        if (data.realUser) setRealUser(data.realUser);
       }
     } finally {
       setLoadingUser(false);
@@ -1978,6 +1981,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between">
       {/* Banner de Ambiente de Treinamento e Capacitação (Condicional via Env/URL/Contrato) */}
+      <BarraImpersonacaoAdmin sessaoReal={realUser} sessaoAtual={currentUser} />
       <BannerTreinamento
         currentUser={currentUser}
         contratoNumero={contratoData?.contrato?.numeroContrato}

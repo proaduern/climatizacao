@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
+import { getSession, obterSessaoReal } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
@@ -7,9 +7,9 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   try {
     const session = await getSession();
+    const realSession = await obterSessaoReal();
 
     if (!session) {
-      // Se não houver sessão ativa, retorna o usuário Admin padrão para conveniência
       const adminDefault = await prisma.usuario.findFirst({
         where: { role: 'ADMIN' },
         include: { unidade: true },
@@ -32,6 +32,12 @@ export async function GET(request: NextRequest) {
           unidadeSigla: adminDefault.unidade?.sigla,
           unidadeNome: adminDefault.unidade?.nome,
         },
+        realUser: {
+          id: adminDefault.id,
+          nome: adminDefault.nome,
+          email: adminDefault.email,
+          role: adminDefault.role,
+        },
       });
     }
 
@@ -40,25 +46,30 @@ export async function GET(request: NextRequest) {
       include: { unidade: true, empresa: true },
     });
 
-    if (!usuarioDb || !usuarioDb.ativo) {
-      return NextResponse.json({ authenticated: false }, { status: 401 });
-    }
+    const userPayload = usuarioDb
+      ? {
+          id: usuarioDb.id,
+          nome: usuarioDb.nome,
+          email: usuarioDb.email,
+          cpf: usuarioDb.cpf,
+          matricula: usuarioDb.matricula,
+          role: usuarioDb.role,
+          unidadeId: usuarioDb.unidadeId,
+          unidadeSigla: usuarioDb.unidade?.sigla,
+          unidadeNome: usuarioDb.unidade?.nome,
+          empresaId: usuarioDb.empresaId,
+          empresaRazaoSocial: usuarioDb.empresa?.razaoSocial,
+        }
+      : session;
 
     return NextResponse.json({
       authenticated: true,
-      user: {
-        id: usuarioDb.id,
-        nome: usuarioDb.nome,
-        email: usuarioDb.email,
-        cpf: usuarioDb.cpf,
-        matricula: usuarioDb.matricula,
-        role: usuarioDb.role,
-        unidadeId: usuarioDb.unidadeId,
-        unidadeSigla: usuarioDb.unidade?.sigla,
-        unidadeNome: usuarioDb.unidade?.nome,
-        empresaId: usuarioDb.empresaId,
-        empresaRazaoSocial: usuarioDb.empresa?.razaoSocial,
-      },
+      user: userPayload,
+      realUser: realSession || userPayload,
+      isImpersonando: Boolean(
+        realSession?.role === 'ADMIN' &&
+          (session.id !== realSession.id || session.role !== realSession.role)
+      ),
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
