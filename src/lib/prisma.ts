@@ -1,4 +1,9 @@
 import { PrismaClient } from '@prisma/client';
+import {
+  encryptFieldsInData,
+  encryptWhereUnique,
+  decryptFieldsInResult,
+} from './crypto-pii';
 
 function otimizarDatabaseUrl(rawUrl?: string): string | undefined {
   if (!rawUrl) return undefined;
@@ -19,18 +24,67 @@ function otimizarDatabaseUrl(rawUrl?: string): string | undefined {
   }
 }
 
-declare global {
-  var prismaClimaGlobal: PrismaClient | undefined;
-}
+const PII_DETERMINISTIC = ['cpf'];
+const PII_RANDOM = ['matricula'];
+const PII_ALL = [...PII_DETERMINISTIC, ...PII_RANDOM];
 
-const pooledUrl = otimizarDatabaseUrl(process.env.DATABASE_URL);
-
-export const prisma =
-  globalThis.prismaClimaGlobal ??
-  new PrismaClient({
+function createPrismaClient() {
+  const pooledUrl = otimizarDatabaseUrl(process.env.DATABASE_URL);
+  const baseClient = new PrismaClient({
     ...(pooledUrl ? { datasources: { db: { url: pooledUrl } } } : {}),
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
   });
+
+  return baseClient.$extends({
+    query: {
+      usuario: {
+        async findUnique({ args, query }) {
+          if (args.where) args.where = encryptWhereUnique(args.where, PII_DETERMINISTIC);
+          return decryptFieldsInResult(await query(args), PII_ALL);
+        },
+        async findUniqueOrThrow({ args, query }) {
+          if (args.where) args.where = encryptWhereUnique(args.where, PII_DETERMINISTIC);
+          return decryptFieldsInResult(await query(args), PII_ALL);
+        },
+        async findFirst({ args, query }) {
+          if (args.where) args.where = encryptWhereUnique(args.where, PII_DETERMINISTIC);
+          return decryptFieldsInResult(await query(args), PII_ALL);
+        },
+        async findFirstOrThrow({ args, query }) {
+          if (args.where) args.where = encryptWhereUnique(args.where, PII_DETERMINISTIC);
+          return decryptFieldsInResult(await query(args), PII_ALL);
+        },
+        async findMany({ args, query }) {
+          if (args.where) args.where = encryptWhereUnique(args.where, PII_DETERMINISTIC);
+          return decryptFieldsInResult(await query(args), PII_ALL);
+        },
+        async create({ args, query }) {
+          args.data = encryptFieldsInData(args.data, PII_DETERMINISTIC, PII_RANDOM);
+          return decryptFieldsInResult(await query(args), PII_ALL);
+        },
+        async update({ args, query }) {
+          if (args.where) args.where = encryptWhereUnique(args.where, PII_DETERMINISTIC);
+          args.data = encryptFieldsInData(args.data, PII_DETERMINISTIC, PII_RANDOM);
+          return decryptFieldsInResult(await query(args), PII_ALL);
+        },
+        async upsert({ args, query }) {
+          if (args.where) args.where = encryptWhereUnique(args.where, PII_DETERMINISTIC);
+          args.create = encryptFieldsInData(args.create, PII_DETERMINISTIC, PII_RANDOM);
+          args.update = encryptFieldsInData(args.update, PII_DETERMINISTIC, PII_RANDOM);
+          return decryptFieldsInResult(await query(args), PII_ALL);
+        },
+      },
+    },
+  });
+}
+
+export type ExtendedPrismaClient = ReturnType<typeof createPrismaClient>;
+
+declare global {
+  var prismaClimaGlobal: ExtendedPrismaClient | undefined;
+}
+
+export const prisma = globalThis.prismaClimaGlobal ?? createPrismaClient();
 
 globalThis.prismaClimaGlobal = prisma;
 
